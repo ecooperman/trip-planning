@@ -1,0 +1,13 @@
+[Unit]
+Description=Trip Planning
+After=network.target
+
+[Service]
+User=deploy
+WorkingDirectory=/opt/apps/trip-planning
+ExecStart=/opt/apps/trip-planning/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8060
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Activities - Trip Planning</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="app-header">
+    <h1>Activities</h1>
+    <p class="subtitle">Create activities here, or from within a trip - they're the same form either way.</p>
+  </header>
+
+  <nav class="app-nav">
+    <a href="/" class="app-nav-link">
+      <span class="app-nav-icon" aria-hidden="true">🧭</span>
+      Trips
+    </a>
+    <a href="/activities.html" class="app-nav-link active">
+      <span class="app-nav-icon" aria-hidden="true">🎟️</span>
+      Activities
+    </a>
+  </nav>
+
+  <main>
+    <div id="page-message" class="page-message hidden"></div>
+
+    <div id="add-activity-container"></div>
+
+    <section>
+      <div class="list-header">
+        <h2>All activities</h2>
+        <span id="activity-count" class="list-count"></span>
+      </div>
+      <div id="activities-list" class="item-list"></div>
+      <p id="empty-state" class="empty-state" hidden>No activities yet - add one above to get started.</p>
+    </section>
+  </main>
+
+  <script src="common.js"></script>
+  <script src="activity-shared.js"></script>
+  <script src="activities.js"></script>
+</body>
+</html>

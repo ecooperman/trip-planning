@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Trip Planning</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="app-header">
+    <h1>Trip Planning</h1>
+    <p class="subtitle">Plan trips, lodging, and activities in one place.</p>
+  </header>
+
+  <nav class="app-nav">
+    <a href="/" class="app-nav-link active">
+      <span class="app-nav-icon" aria-hidden="true">🧭</span>
+      Trips
+    </a>
+    <a href="/activities.html" class="app-nav-link">
+      <span class="app-nav-icon" aria-hidden="true">🎟️</span>
+      Activities
+    </a>
+  </nav>
+
+  <main>
+    <div id="page-message" class="page-message hidden"></div>
+
+    <div id="add-trip-container"></div>
+
+    <section>
+      <div class="list-header">
+        <h2>Trips</h2>
+        <span id="trip-count" class="list-count"></span>
+      </div>
+      <div id="trips-list" class="item-list"></div>
+      <p id="empty-state" class="empty-state" hidden>No trips yet - add one above to get started.</p>
+    </section>
+
+    <details id="archived-section" class="archived-section">
+      <summary>
+        <span id="archived-summary-text">Archived trips</span>
+      </summary>
+      <div id="archived-trips-list" class="item-list"></div>
+    </details>
+  </main>
+
+  <script src="common.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

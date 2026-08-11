@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Trip - Trip Planning</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="app-header">
+    <h1 id="page-title">Trip</h1>
+  </header>
+
+  <nav class="app-nav">
+    <a href="/" class="app-nav-link active">
+      <span class="app-nav-icon" aria-hidden="true">🧭</span>
+      Trips
+    </a>
+    <a href="/activities.html" class="app-nav-link">
+      <span class="app-nav-icon" aria-hidden="true">🎟️</span>
+      Activities
+    </a>
+  </nav>
+
+  <main>
+    <a href="/" class="back-link">← All trips</a>
+    <div id="page-message" class="page-message hidden"></div>
+
+    <div id="trip-header-container"></div>
+    <div id="coverage-banner-container"></div>
+
+    <section class="section">
+      <div class="list-header">
+        <h2>Stays</h2>
+        <span id="stay-count" class="list-count"></span>
+      </div>
+      <div id="add-stay-container"></div>
+      <div id="stays-list" class="item-list"></div>
+      <p id="stays-empty" class="empty-state" hidden>No stays yet - add one above.</p>
+
+      <details id="archived-stays-section" class="archived-section" hidden>
+        <summary><span id="archived-stays-summary-text">Other options</span></summary>
+        <div id="archived-stays-list" class="item-list"></div>
+      </details>
+    </section>
+
+    <section class="section">
+      <div class="list-header">
+        <h2>Activities</h2>
+        <span id="activity-count" class="list-count"></span>
+      </div>
+      <div id="attach-activity-container" class="attach-existing"></div>
+      <div id="add-activity-container"></div>
+      <div id="activities-list" class="item-list"></div>
+      <p id="activities-empty" class="empty-state" hidden>No activities yet - add one above.</p>
+    </section>
+  </main>
+
+  <script src="common.js"></script>
+  <script src="activity-shared.js"></script>
+  <script src="trip.js"></script>
+</body>
+</html>
