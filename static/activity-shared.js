@@ -16,6 +16,9 @@ function activityCardElement(activity, opts = {}) {
   const summary = el("button", { type: "button", class: "item-summary", "aria-expanded": String(expanded) });
   summary.appendChild(el("span", { class: "item-summary-title", text: activity.name }));
 
+  const schedule = formatScheduleBadge(activity.scheduled_start, activity.scheduled_end);
+  if (schedule) summary.appendChild(el("span", { class: "item-badge item-badge-date", text: schedule }));
+
   const cost = formatCost(activity.cost);
   if (cost) summary.appendChild(el("span", { class: "item-badge item-badge-cost", text: cost }));
 
@@ -51,6 +54,8 @@ function buildActivityDetails(card, activity, { onChanged, onDeleted, onUnlink, 
   const urlInput = el("input", { type: "url", value: activity.url || "" });
   const costInput = el("input", { type: "number", min: "0", step: "1", value: activity.cost ?? "" });
   const confirmationInput = el("input", { type: "text", value: activity.confirmation_number || "" });
+  const scheduledStartInput = el("input", { type: "datetime-local", value: toDatetimeLocal(activity.scheduled_start) });
+  const scheduledEndInput = el("input", { type: "datetime-local", value: toDatetimeLocal(activity.scheduled_end) });
 
   const fields = el("div", { class: "item-fields" }, [
     el("div", { class: "field" }, [el("label", { text: "Name" }), nameInput]),
@@ -58,6 +63,10 @@ function buildActivityDetails(card, activity, { onChanged, onDeleted, onUnlink, 
     el("div", { class: "field" }, [el("label", { text: "URL" }), urlInput]),
     el("div", { class: "field" }, [el("label", { text: "Cost ($)" }), costInput]),
     el("div", { class: "field" }, [el("label", { text: "Confirmation #" }), confirmationInput]),
+    // Usually set by dragging onto a trip's agenda page rather than typed
+    // here, but editable directly too (e.g. to nudge a time or clear it).
+    el("div", { class: "field" }, [el("label", { text: "Scheduled start" }), scheduledStartInput]),
+    el("div", { class: "field" }, [el("label", { text: "Scheduled end" }), scheduledEndInput]),
   ]);
   wrap.appendChild(fields);
 
@@ -91,6 +100,10 @@ function buildActivityDetails(card, activity, { onChanged, onDeleted, onUnlink, 
         return;
       }
       const costValue = costInput.value.trim();
+      if ((scheduledStartInput.value && !scheduledEndInput.value) || (!scheduledStartInput.value && scheduledEndInput.value)) {
+        showMessage("Set both a scheduled start and end, or clear both.", "error");
+        return;
+      }
       try {
         const updated = await fetchJSON(`${ACTIVITIES_API}/${activity.id}`, {
           method: "PATCH",
@@ -101,6 +114,8 @@ function buildActivityDetails(card, activity, { onChanged, onDeleted, onUnlink, 
             url: urlInput.value.trim() || null,
             cost: costValue === "" ? null : Number(costValue),
             confirmation_number: confirmationInput.value.trim() || null,
+            scheduled_start: datetimeLocalToISO(scheduledStartInput.value),
+            scheduled_end: datetimeLocalToISO(scheduledEndInput.value),
           }),
         });
         showMessage(`Saved "${name}".`, "success");

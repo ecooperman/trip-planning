@@ -64,6 +64,12 @@ class Activity(Base):
     cost = Column(Integer, nullable=True)
     confirmation_number = Column(String, nullable=True)
 
+    # Both optional - null means "not yet scheduled," which is what puts it
+    # in the agenda page's unscheduled sidebar rather than a day column.
+    # Duration is end-start rather than a stored field, same as Stay.
+    scheduled_start = Column(DateTime, nullable=True)
+    scheduled_end = Column(DateTime, nullable=True)
+
     scrape_status = Column(Enum(ScrapeStatus), nullable=False, default=ScrapeStatus.not_started)
     scraped_title = Column(String, nullable=True)
     scraped_description = Column(String, nullable=True)

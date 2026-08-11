@@ -451,6 +451,22 @@ label.checkbox-label input {
   color: var(--text);
 }
 
+/* These classes are also used on <a> tags styled to look like buttons
+   (e.g. the agenda link on trip.html) - the base `button {...}` reset
+   above only targets real <button> elements, so anchors need it repeated. */
+a.danger-btn,
+a.save-btn,
+a.cancel-btn,
+a.secondary-btn {
+  display: inline-block;
+  border-radius: 6px;
+  padding: 8px 14px;
+  font-weight: 600;
+  font-size: 14px;
+  text-decoration: none;
+  cursor: pointer;
+}
+
 /* --- OG-tag / Instagram / Airbnb preview fetch --- */
 
 .scrape-section {
@@ -624,6 +640,131 @@ label.checkbox-label input {
 .attach-existing select {
   flex: 1;
   min-width: 160px;
+}
+
+/* --- agenda page: horizontally-scrolling day columns, each an ordered
+   stack of scheduled entries and drop-target gaps between them --- */
+
+main.wide {
+  max-width: 1100px;
+}
+
+.agenda-days {
+  display: flex;
+  gap: 14px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  margin-bottom: 24px;
+}
+
+.agenda-day {
+  flex: 0 0 240px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.agenda-day-header {
+  margin-bottom: 4px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.agenda-day-date {
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.agenda-day-stay {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.agenda-gap {
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  transition: background-color 0.1s ease, border-color 0.1s ease;
+}
+
+.agenda-gap-label {
+  font-size: 11px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.agenda-gap.drag-over {
+  background: var(--accent-bg);
+  border-color: var(--accent);
+}
+
+.agenda-gap-none {
+  min-height: 4px;
+  border: none;
+}
+
+.agenda-entry {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  cursor: grab;
+}
+
+.agenda-entry:active {
+  cursor: grabbing;
+}
+
+.agenda-entry-time {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.agenda-entry-name {
+  font-size: 13px;
+  font-weight: 600;
+  margin-top: 2px;
+}
+
+.agenda-entry-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.agenda-entry-link {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 11px;
+}
+
+.agenda-unscheduled {
+  flex-direction: row;
+  flex-wrap: wrap;
+  min-height: 48px;
+  padding: 10px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+}
+
+.agenda-unscheduled.drag-over {
+  background: var(--accent-bg);
+  border-color: var(--accent);
+}
+
+.agenda-unscheduled .agenda-entry {
+  width: 200px;
 }
 
 @media (min-width: 640px) {

@@ -51,7 +51,8 @@ function renderTripHeader() {
     },
   });
 
-  top.appendChild(el("div", { class: "trip-header-actions" }, [archiveBtn, deleteBtn]));
+  const agendaLink = el("a", { href: `agenda.html?id=${tripId}`, class: "secondary-btn", text: "📅 Agenda" });
+  top.appendChild(el("div", { class: "trip-header-actions" }, [agendaLink, archiveBtn, deleteBtn]));
 
   const fields = el("div", { class: "item-fields" }, [
     el("div", { class: "field" }, [el("label", { text: "Location" }), locationInput]),

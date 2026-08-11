@@ -97,12 +97,30 @@ class StayCoverage(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-class ActivityBase(UrlValidator, CostValidator):
+class ScheduleValidator(BaseModel):
+    """Shared scheduled_start/scheduled_end ordering check - same
+    end-on-or-after-start rule used for Trip and Stay, mixed in wherever
+    those two fields appear."""
+
+    @model_validator(mode="after")
+    def _check_schedule_order(self):
+        start = getattr(self, "scheduled_start", None)
+        end = getattr(self, "scheduled_end", None)
+        if start and end and end < start:
+            raise ValueError("scheduled_end must be on or after scheduled_start")
+        return self
+
+
+class ActivityBase(UrlValidator, CostValidator, ScheduleValidator):
     name: str
     description: Optional[str] = None
     url: Optional[str] = None
     cost: Optional[int] = None
     confirmation_number: Optional[str] = None
+    # Null means "not yet scheduled" - see agenda.html, which lists
+    # activities with no scheduled_start in an unscheduled sidebar.
+    scheduled_start: Optional[datetime] = None
+    scheduled_end: Optional[datetime] = None
 
 
 class ActivityCreate(ActivityBase):
@@ -112,12 +130,14 @@ class ActivityCreate(ActivityBase):
     trip_id: Optional[int] = None
 
 
-class ActivityUpdate(UrlValidator, CostValidator):
+class ActivityUpdate(UrlValidator, CostValidator, ScheduleValidator):
     name: Optional[str] = None
     description: Optional[str] = None
     url: Optional[str] = None
     cost: Optional[int] = None
     confirmation_number: Optional[str] = None
+    scheduled_start: Optional[datetime] = None
+    scheduled_end: Optional[datetime] = None
 
 
 class Activity(ActivityBase):

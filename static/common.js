@@ -67,11 +67,76 @@ function formatDateBadge(isoDateTime) {
   return new Date(y, m - 1, d).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
+// --- datetime (date + time-of-day) helpers, for Activity.scheduled_start/
+// scheduled_end. Our stored datetimes are naive (no timezone) - they mean
+// "this wall-clock time at the destination" - so every helper below parses
+// the y/m/d/hh/mm components directly and builds a local Date from them,
+// the same way formatDateBadge avoids Date's ISO-string-parsing pitfalls,
+// rather than ever doing `new Date(isoString)` on a timezone-less string.
+
+function parseDateTimeParts(isoDateTime) {
+  const [datePart, timePart = "00:00:00"] = isoDateTime.split("T");
+  const [y, m, d] = datePart.split("-").map(Number);
+  const [hh, mm] = timePart.split(":").map(Number);
+  return { y, m, d, hh, mm };
+}
+
+function partsToDate(parts) {
+  return new Date(parts.y, parts.m - 1, parts.d, parts.hh, parts.mm);
+}
+
+function dateToISODateTime(date) {
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:00`;
+}
+
+function minutesBetween(startIso, endIso) {
+  return (partsToDate(parseDateTimeParts(endIso)) - partsToDate(parseDateTimeParts(startIso))) / 60000;
+}
+
+function addMinutesISO(isoDateTime, minutes) {
+  const date = partsToDate(parseDateTimeParts(isoDateTime));
+  date.setMinutes(date.getMinutes() + minutes);
+  return dateToISODateTime(date);
+}
+
+function toDatetimeLocal(isoDateTime) {
+  if (!isoDateTime) return "";
+  return isoDateTime.slice(0, 16);
+}
+
+function datetimeLocalToISO(value) {
+  return value ? `${value}:00` : null;
+}
+
+function formatTime(isoDateTime) {
+  if (!isoDateTime) return null;
+  return partsToDate(parseDateTimeParts(isoDateTime)).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+}
+
+function formatScheduleBadge(startIso, endIso) {
+  if (!startIso) return null;
+  const dateLabel = formatDateBadge(startIso);
+  const startTime = formatTime(startIso);
+  if (!endIso) return `${dateLabel}, ${startTime}`;
+  const sameDay = toISODate(startIso) === toISODate(endIso);
+  const endTime = formatTime(endIso);
+  return sameDay ? `${dateLabel}, ${startTime}–${endTime}` : `${dateLabel} ${startTime} – ${formatDateBadge(endIso)} ${endTime}`;
+}
+
 function formatDateRange(startIso, endIso) {
   const start = formatDateBadge(startIso);
   const end = formatDateBadge(endIso);
   if (start && end) return start === end ? start : `${start} - ${end}`;
   return start || end || null;
+}
+
+function formatDuration(minutes) {
+  const h = Math.floor(minutes / 60);
+  const m = Math.round(minutes % 60);
+  if (h && m) return `${h}h ${m}m`;
+  if (h) return `${h}h`;
+  return `${m}m`;
 }
 
 function formatCost(cost) {
