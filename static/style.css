@@ -375,6 +375,25 @@ label.checkbox-label input {
   font-size: 15px;
 }
 
+/* Small icon-only link inline in a summary row (e.g. jump straight to a
+   trip's agenda without expanding the card) - padding + negative margin
+   gives it a generous tap target without taking extra visual space in the
+   flex row. */
+.item-summary-icon-link {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  margin: -8px 0;
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.item-summary-icon-link:hover {
+  color: var(--accent);
+}
+
 .item-chevron {
   flex-shrink: 0;
   color: var(--muted);

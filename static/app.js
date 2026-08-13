@@ -3,20 +3,40 @@
 function tripCardElement(trip, { expanded = false } = {}) {
   const card = el("div", { class: "item-card" + (expanded ? " expanded" : "") + (trip.archived ? " archived" : ""), "data-id": trip.id });
 
-  const summary = el("button", { type: "button", class: "item-summary", "aria-expanded": String(expanded) });
+  // A <div role="button"> rather than a real <button> - the nested Agenda
+  // link below is interactive content, which is invalid (and flaky for
+  // keyboard/screen-reader nav) inside a real <button>. tabindex + the
+  // keydown handler keep it fully keyboard-operable despite not being a
+  // native button.
+  const summary = el("div", { class: "item-summary", role: "button", tabindex: "0", "aria-expanded": String(expanded) });
   summary.appendChild(el("span", { class: "item-summary-title", text: trip.location }));
 
   const dateLabel = formatDateRange(trip.start_date, trip.end_date);
   if (dateLabel) summary.appendChild(el("span", { class: "item-badge item-badge-date", text: dateLabel }));
   if (trip.archived) summary.appendChild(el("span", { class: "item-badge item-badge-archived", text: "Archived" }));
 
+  const agendaLink = el("a", {
+    href: `agenda.html?id=${trip.id}`,
+    class: "item-summary-icon-link",
+    "aria-label": `Open agenda for ${trip.location}`,
+  }, [el("span", { class: "btn-icon", "data-icon": "calendar", "aria-hidden": "true" })]);
+  agendaLink.addEventListener("click", (e) => e.stopPropagation());
+  summary.appendChild(agendaLink);
+
   summary.appendChild(el("span", { class: "item-chevron", "aria-hidden": "true", text: "▸" }));
 
   const details = el("div", { class: "item-details" + (expanded ? "" : " hidden") });
-  summary.addEventListener("click", () => {
+  function toggle() {
     const isExpanded = card.classList.toggle("expanded");
     details.classList.toggle("hidden", !isExpanded);
     summary.setAttribute("aria-expanded", String(isExpanded));
+  }
+  summary.addEventListener("click", toggle);
+  summary.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      toggle();
+    }
   });
 
   card.append(summary, details);
@@ -146,7 +166,9 @@ function buildTripEditPane(card, trip) {
 
 function placeTripCard(trip, opts = {}) {
   const list = trip.archived ? document.getElementById("archived-trips-list") : document.getElementById("trips-list");
-  list.appendChild(tripCardElement(trip, opts));
+  const card = tripCardElement(trip, opts);
+  list.appendChild(card);
+  applyIcons(card);
 }
 
 function refreshCounts() {

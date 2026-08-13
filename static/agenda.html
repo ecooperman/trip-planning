@@ -12,20 +12,7 @@
     <p class="subtitle">Drag an unscheduled activity into a day to set its time. The "production" view - referred to on the trip, edited from the trip page.</p>
   </header>
 
-  <nav class="app-nav">
-    <a href="/" class="app-nav-link">
-      <span class="app-nav-icon" data-icon="compass" aria-hidden="true"></span>
-      Trips
-    </a>
-    <a href="/activities.html" class="app-nav-link">
-      <span class="app-nav-icon" data-icon="list" aria-hidden="true"></span>
-      Activities
-    </a>
-    <button type="button" class="app-nav-link" onclick="location.reload()">
-      <span class="app-nav-icon" data-icon="refresh" aria-hidden="true"></span>
-      Refresh
-    </button>
-  </nav>
+  <div id="app-nav-mount"></div>
 
   <main class="wide">
     <a id="back-link" href="/" class="back-link">← Back to trip</a>
@@ -47,6 +34,7 @@
   <script src="icons.js"></script>
   <script src="version.js"></script>
   <script src="common.js"></script>
+  <script src="nav.js"></script>
   <script src="agenda.js"></script>
 </body>
 </html>

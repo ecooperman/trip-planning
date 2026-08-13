@@ -12,20 +12,7 @@
     <p class="subtitle">Create activities here, or from within a trip - they're the same form either way.</p>
   </header>
 
-  <nav class="app-nav">
-    <a href="/" class="app-nav-link">
-      <span class="app-nav-icon" data-icon="compass" aria-hidden="true"></span>
-      Trips
-    </a>
-    <a href="/activities.html" class="app-nav-link active">
-      <span class="app-nav-icon" data-icon="list" aria-hidden="true"></span>
-      Activities
-    </a>
-    <button type="button" class="app-nav-link" onclick="location.reload()">
-      <span class="app-nav-icon" data-icon="refresh" aria-hidden="true"></span>
-      Refresh
-    </button>
-  </nav>
+  <div id="app-nav-mount"></div>
 
   <main>
     <div id="page-message" class="page-message hidden"></div>
@@ -47,6 +34,7 @@
   <script src="icons.js"></script>
   <script src="version.js"></script>
   <script src="common.js"></script>
+  <script src="nav.js"></script>
   <script src="activity-shared.js"></script>
   <script src="activities.js"></script>
 </body>
