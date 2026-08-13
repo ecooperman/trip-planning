@@ -121,11 +121,30 @@ a {
   color: var(--accent);
 }
 
+#app-version {
+  position: fixed;
+  right: 6px;
+  /* Below 640px, .app-nav is fixed to the bottom of the screen - sit just
+     above it rather than behind/under its content. */
+  bottom: calc(var(--nav-height) + env(safe-area-inset-bottom, 0) + 2px);
+  font-size: 9px;
+  color: var(--muted);
+  opacity: 0.6;
+  z-index: 51;
+  pointer-events: none;
+}
+
 body {
   padding-bottom: calc(var(--nav-height) + env(safe-area-inset-bottom, 0));
 }
 
 @media (min-width: 640px) {
+  #app-version {
+    /* .app-nav is back in normal document flow up here, so there's nothing
+       fixed at the bottom of the screen to avoid. */
+    bottom: 4px;
+  }
+
   body {
     padding-bottom: 0;
   }

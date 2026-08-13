@@ -1,4 +1,7 @@
-from fastapi import FastAPI
+import subprocess
+from pathlib import Path
+
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 
 from .routers import activities, stays, trips
@@ -7,32 +10,53 @@ from .routers import activities, stays, trips
 # `alembic upgrade head` before starting the app rather than relying on
 # create_all, so schema changes never silently bypass migrations.
 
+
+def _get_git_sha() -> str:
+    """Short commit hash the running app was deployed from, read straight
+    from the repo on disk (the deploy pulls a real git checkout) - no CI
+    wiring needed, and it can never drift from what's actually running.
+    """
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=Path(__file__).resolve().parent.parent,
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip()
+    except Exception:
+        return "unknown"
+
+
+GIT_SHA = _get_git_sha()
+
 app = FastAPI(title="Trip Planning")
+
+
+@app.get("/api/version")
+def get_version():
+    return {"version": GIT_SHA}
+
+
+@app.middleware("http")
+async def no_cache(request: Request, call_next):
+    """Never let the browser (or iOS's aggressive standalone-PWA cache) serve
+    a stale copy of the app - this is a single-user local tool, not a public
+    site, so there's no real cost to always fetching fresh. Same fix as
+    time-management's app/main.py; `no-cache` on just the static files
+    (an earlier attempt here) wasn't strong enough - a CDN/PWA cache layer
+    isn't obligated to revalidate the way `no-cache` asks, only `no-store`
+    is an unambiguous "never cache this, anywhere" signal.
+    """
+    response = await call_next(request)
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
 
 app.include_router(trips.router)
 app.include_router(activities.router)
 app.include_router(stays.router)
 
-
-class NoCacheStaticFiles(StaticFiles):
-    """Plain StaticFiles sends no Cache-Control header at all, which makes
-    browsers apply their own heuristic caching (roughly 10% of the file's
-    age since Last-Modified) - in practice that means a deployed JS/CSS
-    change can silently not show up for a user with the old version
-    already cached, with no way to tell short of a hard refresh. `no-cache`
-    (not `no-store`) still lets the browser use its cached copy, but only
-    after revalidating with the server via the ETag/Last-Modified headers
-    StaticFiles already sends - a cheap 304 when nothing changed, the real
-    file when something did.
-    """
-
-    def file_response(self, *args, **kwargs):
-        response = super().file_response(*args, **kwargs)
-        response.headers["Cache-Control"] = "no-cache"
-        return response
-
-
-app.mount("/", NoCacheStaticFiles(directory="static", html=True), name="static")
+app.mount("/", StaticFiles(directory="static", html=True), name="static")
 
 if __name__ == "__main__":
     import uvicorn
