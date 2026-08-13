@@ -95,6 +95,17 @@ a {
   font-weight: 600;
 }
 
+/* .app-nav-link is also used on the <button> refresh action - undo the
+   generic `button {...}` reset below so it matches the plain <a> nav
+   items instead of looking like a black rounded action button. */
+button.app-nav-link {
+  cursor: pointer;
+  border: none;
+  background: none;
+  border-radius: 0;
+  font-family: inherit;
+}
+
 .app-nav-icon {
   font-size: 18px;
   line-height: 1;
