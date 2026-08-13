@@ -121,17 +121,16 @@ a {
   color: var(--accent);
 }
 
+/* Plain in-flow text, not position:fixed - it's the last thing inside
+   <main> on every page, so it only comes into view once you've actually
+   scrolled to the bottom of the content, rather than floating on screen
+   at all times. */
 #app-version {
-  position: fixed;
-  right: 6px;
-  /* Below 640px, .app-nav is fixed to the bottom of the screen - sit just
-     above it rather than behind/under its content. */
-  bottom: calc(var(--nav-height) + env(safe-area-inset-bottom, 0) + 2px);
-  font-size: 9px;
+  text-align: right;
+  margin-top: 24px;
+  font-size: 10px;
   color: var(--muted);
   opacity: 0.6;
-  z-index: 51;
-  pointer-events: none;
 }
 
 body {
@@ -139,12 +138,6 @@ body {
 }
 
 @media (min-width: 640px) {
-  #app-version {
-    /* .app-nav is back in normal document flow up here, so there's nothing
-       fixed at the bottom of the screen to avoid. */
-    bottom: 4px;
-  }
-
   body {
     padding-bottom: 0;
   }
