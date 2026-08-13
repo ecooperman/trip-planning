@@ -14,11 +14,13 @@ URL_RE = re.compile(r"^https?://[^\s/$.?#][^\s]*$", re.IGNORECASE)
 
 
 class UrlValidator(BaseModel):
-    """Mixed into any schema with an optional `url` field (Activity, Stay -
-    both create/read and update variants) so a PATCH can't write invalid
-    data even though every field on the update schema is optional."""
+    """Mixed into any schema with an optional `url` and/or `map_link` field
+    (Activity, Stay - both create/read and update variants) so a PATCH
+    can't write invalid data even though every field on the update schema
+    is optional. check_fields=False lets this apply to whichever of the two
+    field names a given model actually has - Stay has no map_link."""
 
-    @field_validator("url", check_fields=False)
+    @field_validator("url", "map_link", check_fields=False)
     @classmethod
     def _check_url(cls, v: Optional[str]) -> Optional[str]:
         if v is None or v == "":
@@ -117,6 +119,12 @@ class ActivityBase(UrlValidator, CostValidator, ScheduleValidator):
     url: Optional[str] = None
     cost: Optional[int] = None
     confirmation_number: Optional[str] = None
+    address: Optional[str] = None
+    phone_number: Optional[str] = None
+    map_link: Optional[str] = None
+    # Separate from `description` - notes is for the user's own reminders,
+    # not a scraped/copied summary of the place.
+    notes: Optional[str] = None
     # Null means "not yet scheduled" - see agenda.html, which lists
     # activities with no scheduled_start in an unscheduled sidebar.
     scheduled_start: Optional[datetime] = None
@@ -136,6 +144,10 @@ class ActivityUpdate(UrlValidator, CostValidator, ScheduleValidator):
     url: Optional[str] = None
     cost: Optional[int] = None
     confirmation_number: Optional[str] = None
+    address: Optional[str] = None
+    phone_number: Optional[str] = None
+    map_link: Optional[str] = None
+    notes: Optional[str] = None
     scheduled_start: Optional[datetime] = None
     scheduled_end: Optional[datetime] = None
 
@@ -168,6 +180,7 @@ class StayBase(UrlValidator):
     name: str
     description: Optional[str] = None
     url: Optional[str] = None
+    address: Optional[str] = None
     start_date: datetime
     end_date: datetime
     booked: bool = False
@@ -187,6 +200,7 @@ class StayUpdate(UrlValidator):
     name: Optional[str] = None
     description: Optional[str] = None
     url: Optional[str] = None
+    address: Optional[str] = None
     start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None
     booked: Optional[bool] = None

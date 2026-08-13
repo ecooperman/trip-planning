@@ -63,6 +63,12 @@ class Activity(Base):
     url = Column(String, nullable=True)
     cost = Column(Integer, nullable=True)
     confirmation_number = Column(String, nullable=True)
+    address = Column(String, nullable=True)
+    phone_number = Column(String, nullable=True)
+    map_link = Column(String, nullable=True)
+    # Separate from `description` (which tends to hold a scraped/copied
+    # summary of the place) - notes is for the user's own reminders.
+    notes = Column(Text, nullable=True)
 
     # Both optional - null means "not yet scheduled," which is what puts it
     # in the agenda page's unscheduled sidebar rather than a day column.
@@ -101,6 +107,7 @@ class Stay(Base):
     name = Column(String, nullable=False)
     description = Column(Text, nullable=True)
     url = Column(String, nullable=True)
+    address = Column(String, nullable=True)
     start_date = Column(DateTime, nullable=False)
     end_date = Column(DateTime, nullable=False)
     booked = Column(Boolean, nullable=False, default=False)

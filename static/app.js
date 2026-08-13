@@ -20,24 +20,30 @@ function tripCardElement(trip, { expanded = false } = {}) {
   });
 
   card.append(summary, details);
-  details.appendChild(buildTripDetails(card, trip));
+  details.appendChild(buildTripViewEdit(card, trip));
   return card;
 }
 
-function buildTripDetails(card, trip) {
+function buildTripViewEdit(card, trip) {
   const wrap = el("div", { class: "item-details-inner" });
+  const viewPane = buildTripViewPane(card, trip);
+  const editPane = buildTripEditPane(card, trip);
+  wrap.append(viewPane, editPane);
+  wireViewEditToggle(viewPane, editPane);
+  return wrap;
+}
 
-  const locationInput = el("input", { type: "text", value: trip.location, required: "required" });
-  const startInput = el("input", { type: "date", value: toISODate(trip.start_date) });
-  const endInput = el("input", { type: "date", value: toISODate(trip.end_date) });
+function buildTripViewPane(card, trip) {
+  const pane = el("div", { class: "view-pane" });
 
-  wrap.append(
-    el("div", { class: "item-fields" }, [
-      el("div", { class: "field" }, [el("label", { text: "Location" }), locationInput]),
-      el("div", { class: "field" }, [el("label", { text: "Start date" }), startInput]),
-      el("div", { class: "field" }, [el("label", { text: "End date" }), endInput]),
-    ]),
-    el("a", { href: `trip.html?id=${trip.id}`, class: "back-link", text: "Open trip page →", style: "display:block;margin-top:12px;" })
+  const dateLabel = formatDateRange(trip.start_date, trip.end_date);
+  const fields = [viewField("Location", trip.location), viewField("Dates", dateLabel || "Not set")].filter(Boolean);
+  pane.appendChild(el("div", { class: "view-fields" }, fields));
+
+  pane.appendChild(
+    el("div", { class: "view-links" }, [
+      el("a", { href: `trip.html?id=${trip.id}`, class: "secondary-btn", text: "Open trip page →" }),
+    ])
   );
 
   const actions = el("div", { class: "item-actions" });
@@ -73,6 +79,37 @@ function buildTripDetails(card, trip) {
     },
   });
 
+  actions.append(deleteBtn, archiveBtn, el("button", { type: "button", class: "secondary-btn edit-toggle-btn", text: "Edit" }));
+  pane.appendChild(actions);
+  return pane;
+}
+
+function buildTripEditPane(card, trip) {
+  const pane = el("div", { class: "edit-pane" });
+
+  const locationInput = el("input", { type: "text", value: trip.location, required: "required" });
+  const startInput = el("input", { type: "date", value: toISODate(trip.start_date) });
+  const endInput = el("input", { type: "date", value: toISODate(trip.end_date) });
+
+  pane.appendChild(
+    el("div", { class: "item-fields" }, [
+      el("div", { class: "field" }, [el("label", { text: "Location" }), locationInput]),
+      el("div", { class: "field" }, [el("label", { text: "Start date" }), startInput]),
+      el("div", { class: "field" }, [el("label", { text: "End date" }), endInput]),
+    ])
+  );
+
+  const actions = el("div", { class: "item-actions" });
+
+  const cancelBtn = el("button", {
+    type: "button",
+    class: "cancel-btn cancel-edit-btn",
+    text: "Cancel",
+    onclick: () => {
+      card.replaceWith(tripCardElement(trip, { expanded: true }));
+    },
+  });
+
   const saveBtn = el("button", {
     type: "button",
     class: "save-btn",
@@ -102,9 +139,9 @@ function buildTripDetails(card, trip) {
     },
   });
 
-  actions.append(deleteBtn, archiveBtn, saveBtn);
-  wrap.appendChild(actions);
-  return wrap;
+  actions.append(cancelBtn, saveBtn);
+  pane.appendChild(actions);
+  return pane;
 }
 
 function placeTripCard(trip, opts = {}) {

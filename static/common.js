@@ -152,6 +152,70 @@ function domainFromUrl(url) {
   }
 }
 
+function isYelpUrl(url) {
+  const domain = domainFromUrl(url);
+  return domain === "yelp.com" || (domain !== null && domain.endsWith(".yelp.com"));
+}
+
+// Google's documented cross-platform maps URL - both iOS Safari and
+// Android Chrome hand a real tap on this off to the Google Maps app via
+// Universal/App Links if it's installed, falling back to the website
+// otherwise. Only used for an address we don't already have a map_link
+// for (e.g. a Stay's address, or an Activity with no scraped map_link).
+function googleMapsSearchUrl(address) {
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
+}
+
+// Directions to a destination, deliberately with no `origin` param - Google
+// Maps treats an origin-less directions link as "from my current location,"
+// which is what you actually want when tapping this while out on the trip
+// (a stale address for wherever you started from is less useful and often
+// unavailable anyway). Used on the agenda page for "next activity" / "back
+// to the stay" links - see agenda.js.
+function googleMapsDirectionsUrl(destination) {
+  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}&travelmode=driving`;
+}
+
+// Best-effort text to route to for something that might not have a real
+// address on file yet - falls back to its name, which Maps can usually
+// still resolve to a real place via search.
+function locationQueryFor(record) {
+  return record.address || record.name;
+}
+
+// --- view/edit toggle, used identically by trip/stay/activity cards -----
+//
+// Convention: each card's details area holds two sibling panes built by
+// the caller - a read-only "view pane" (with a button carrying the
+// "edit-toggle-btn" class) and a form "edit pane" (with a button carrying
+// "cancel-edit-btn"). This just wires the show/hide between them - a plain
+// front-end swap of hidden elements, no re-fetch. Cancel is expected to be
+// wired by the caller to a full re-render instead of a hide/show (so
+// unsaved typing is discarded cleanly rather than lingering hidden in the
+// DOM) - see the per-entity buildXEditPane functions.
+function wireViewEditToggle(viewPane, editPane) {
+  editPane.classList.add("hidden");
+  const editBtn = viewPane.querySelector(".edit-toggle-btn");
+  if (editBtn) {
+    editBtn.addEventListener("click", () => {
+      viewPane.classList.add("hidden");
+      editPane.classList.remove("hidden");
+    });
+  }
+}
+
+// A single read-only label/value row for a view pane. Returns null (append
+// with a guard, or use viewFieldOrNull) when value is empty, so callers can
+// write `[viewField(...), viewField(...)].filter(Boolean)` for optional
+// fields without a wall of individual `if` statements.
+function viewField(label, value) {
+  if (!value) return null;
+  return el("div", { class: "view-field" }, [
+    el("div", { class: "view-field-label", text: label }),
+    el("div", { class: "view-field-value", text: value }),
+  ]);
+}
+
 // Shared trip-deletion flow (used by both index.js and trip.js): asks
 // whether to also permanently delete the trip's activities, since keeping
 // them around unassociated is the safer default but not always what's

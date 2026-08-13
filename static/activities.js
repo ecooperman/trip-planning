@@ -2,6 +2,22 @@
 // and lets you create one without a trip. Uses the exact same form/card
 // code (activity-shared.js) as the activities section on trip.html; the
 // only difference is no tripId is passed, so nothing auto-associates.
+//
+// Also the landing page for the trip-clipper Chrome extension: it opens
+// this page with a base64url-encoded ?prefill= param carrying whatever it
+// read off the page you were looking at (see
+// ../trip-clipper-chrome-extension), which just pre-fills and auto-opens
+// the add-activity form below - nothing is ever saved without you clicking
+// "Add activity" yourself.
+
+function decodeBase64UrlPrefill(value) {
+  try {
+    const padded = value.replace(/-/g, "+").replace(/_/g, "/").padEnd(value.length + ((4 - (value.length % 4)) % 4), "=");
+    return JSON.parse(decodeURIComponent(escape(atob(padded))));
+  } catch (e) {
+    return null;
+  }
+}
 
 function refreshActivityCounts() {
   const count = document.querySelectorAll("#activities-list .item-card").length;
@@ -24,8 +40,21 @@ async function loadActivities() {
   refreshActivityCounts();
 }
 
+const pageParams = new URLSearchParams(window.location.search);
+const prefillParam = pageParams.get("prefill");
+const prefill = prefillParam ? decodeBase64UrlPrefill(prefillParam) : null;
+if (prefillParam) {
+  // Drop it from the URL so refreshing the page doesn't re-open the form
+  // with the same (possibly now-stale) data again.
+  const url = new URL(window.location.href);
+  url.searchParams.delete("prefill");
+  window.history.replaceState({}, "", url);
+}
+
 initAddActivityToggle(document.getElementById("add-activity-container"), {
   tripId: null,
+  prefill,
+  autoOpen: !!prefill,
   onCreated: (created) => {
     document.getElementById("activities-list").appendChild(
       activityCardElement(created, { expanded: true, showTripBadge: true, onDeleted: refreshActivityCounts })
@@ -33,5 +62,7 @@ initAddActivityToggle(document.getElementById("add-activity-container"), {
     refreshActivityCounts();
   },
 });
+
+if (prefill) showMessage(`Filled in from ${prefill.url ? domainFromUrl(prefill.url) || "clipped page" : "clipped page"} - review and save.`, "success");
 
 loadActivities().catch((err) => showMessage(err.message, "error"));

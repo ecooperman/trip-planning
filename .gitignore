@@ -1,5 +1,6 @@
 venv/
 __pycache__/
 *.pyc
-trips.db
+*.db
+*.db.bak
 .DS_Store

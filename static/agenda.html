@@ -14,11 +14,11 @@
 
   <nav class="app-nav">
     <a href="/" class="app-nav-link">
-      <span class="app-nav-icon" aria-hidden="true">🧭</span>
+      <span class="app-nav-icon" data-icon="compass" aria-hidden="true"></span>
       Trips
     </a>
     <a href="/activities.html" class="app-nav-link">
-      <span class="app-nav-icon" aria-hidden="true">🎟️</span>
+      <span class="app-nav-icon" data-icon="list" aria-hidden="true"></span>
       Activities
     </a>
   </nav>
@@ -26,6 +26,7 @@
   <main class="wide">
     <a id="back-link" href="/" class="back-link">← Back to trip</a>
     <div id="page-message" class="page-message hidden"></div>
+    <div id="stay-banner" class="stay-banner hidden"></div>
 
     <div id="agenda-days" class="agenda-days"></div>
 
@@ -37,6 +38,7 @@
     </section>
   </main>
 
+  <script src="icons.js"></script>
   <script src="common.js"></script>
   <script src="agenda.js"></script>
 </body>

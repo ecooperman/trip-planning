@@ -1,6 +1,10 @@
 // Trip detail page: trip header, stay-coverage banner, stays (inline -
 // there's no standalone stays page since a stay always belongs to a trip),
 // and activities (via activity-shared.js, the same code as activities.html).
+//
+// Trip header and stay cards both follow the same view/edit pattern as
+// activities: a read-only view with an Edit button, which swaps to the
+// form (edit pane) - see wireViewEditToggle in common.js.
 
 const STAYS_API = `${API_BASE}/stays`;
 
@@ -17,9 +21,16 @@ function renderTripHeader() {
   const container = document.getElementById("trip-header-container");
   container.innerHTML = "";
 
-  const locationInput = el("input", { type: "text", value: currentTrip.location, required: "required" });
-  const startInput = el("input", { type: "date", value: toISODate(currentTrip.start_date) });
-  const endInput = el("input", { type: "date", value: toISODate(currentTrip.end_date) });
+  const viewPane = buildTripHeaderViewPane();
+  const editPane = buildTripHeaderEditPane();
+  const header = el("div", { class: "trip-header" }, [viewPane, editPane]);
+  wireViewEditToggle(viewPane, editPane);
+  container.appendChild(header);
+  applyIcons(container);
+}
+
+function buildTripHeaderViewPane() {
+  const pane = el("div", { class: "view-pane" });
 
   const top = el("div", { class: "trip-header-top" });
   const badges = el("div", {});
@@ -51,14 +62,42 @@ function renderTripHeader() {
     },
   });
 
-  const agendaLink = el("a", { href: `agenda.html?id=${tripId}`, class: "secondary-btn", text: "📅 Agenda" });
-  top.appendChild(el("div", { class: "trip-header-actions" }, [agendaLink, archiveBtn, deleteBtn]));
-
-  const fields = el("div", { class: "item-fields" }, [
-    el("div", { class: "field" }, [el("label", { text: "Location" }), locationInput]),
-    el("div", { class: "field" }, [el("label", { text: "Start date" }), startInput]),
-    el("div", { class: "field" }, [el("label", { text: "End date" }), endInput]),
+  const agendaLink = el("a", { href: `agenda.html?id=${tripId}`, class: "secondary-btn" }, [
+    el("span", { class: "btn-icon", "data-icon": "calendar", "aria-hidden": "true" }),
+    " Agenda",
   ]);
+  const editBtn = el("button", { type: "button", class: "secondary-btn edit-toggle-btn", text: "Edit" });
+  top.appendChild(el("div", { class: "trip-header-actions" }, [agendaLink, archiveBtn, editBtn, deleteBtn]));
+  pane.appendChild(top);
+
+  const dateLabel = formatDateRange(currentTrip.start_date, currentTrip.end_date);
+  const fields = [viewField("Location", currentTrip.location), viewField("Dates", dateLabel || "Not set")].filter(Boolean);
+  pane.appendChild(el("div", { class: "view-fields" }, fields));
+
+  return pane;
+}
+
+function buildTripHeaderEditPane() {
+  const pane = el("div", { class: "edit-pane" });
+
+  const locationInput = el("input", { type: "text", value: currentTrip.location, required: "required" });
+  const startInput = el("input", { type: "date", value: toISODate(currentTrip.start_date) });
+  const endInput = el("input", { type: "date", value: toISODate(currentTrip.end_date) });
+
+  pane.appendChild(
+    el("div", { class: "item-fields" }, [
+      el("div", { class: "field" }, [el("label", { text: "Location" }), locationInput]),
+      el("div", { class: "field" }, [el("label", { text: "Start date" }), startInput]),
+      el("div", { class: "field" }, [el("label", { text: "End date" }), endInput]),
+    ])
+  );
+
+  const cancelBtn = el("button", {
+    type: "button",
+    class: "cancel-btn cancel-edit-btn",
+    text: "Cancel",
+    onclick: () => renderTripHeader(),
+  });
 
   const saveBtn = el("button", {
     type: "button",
@@ -89,8 +128,8 @@ function renderTripHeader() {
     },
   });
 
-  const header = el("div", { class: "trip-header" }, [top, fields, el("div", { class: "item-actions" }, [saveBtn])]);
-  container.appendChild(header);
+  pane.appendChild(el("div", { class: "item-actions" }, [cancelBtn, saveBtn]));
+  return pane;
 }
 
 // --- stay coverage -----------------------------------------------------------
@@ -136,36 +175,31 @@ function stayCardElement(stay, { expanded = false } = {}) {
   });
 
   card.append(summary, details);
-  details.appendChild(buildStayDetails(card, stay));
+  details.appendChild(buildStayViewEdit(card, stay));
   return card;
 }
 
-function buildStayDetails(card, stay) {
+function buildStayViewEdit(card, stay) {
   const wrap = el("div", { class: "item-details-inner" });
+  const viewPane = buildStayViewPane(card, stay);
+  const editPane = buildStayEditPane(card, stay);
+  wrap.append(viewPane, editPane);
+  wireViewEditToggle(viewPane, editPane);
+  return wrap;
+}
 
-  const nameInput = el("input", { type: "text", value: stay.name, required: "required" });
-  const descInput = el("textarea", { rows: "2" });
-  descInput.value = stay.description || "";
-  const urlInput = el("input", { type: "url", value: stay.url || "" });
-  const startInput = el("input", { type: "date", value: toISODate(stay.start_date), required: "required" });
-  const endInput = el("input", { type: "date", value: toISODate(stay.end_date), required: "required" });
-  const bookedInput = el("input", { type: "checkbox" });
-  bookedInput.checked = stay.booked;
+function buildStayViewPane(card, stay) {
+  const pane = el("div", { class: "view-pane" });
 
-  wrap.append(
-    el("div", { class: "item-fields" }, [
-      el("div", { class: "field" }, [el("label", { text: "Name" }), nameInput]),
-      el("div", { class: "field" }, [el("label", { text: "Description" }), descInput]),
-      el("div", { class: "field" }, [el("label", { text: "URL" }), urlInput]),
-      el("div", { class: "field" }, [el("label", { text: "Start date" }), startInput]),
-      el("div", { class: "field" }, [el("label", { text: "End date" }), endInput]),
-    ]),
-    el("label", { class: "checkbox-label" }, [bookedInput, document.createTextNode("Booked (this is the confirmed option)")])
-  );
+  const fields = [viewField("Description", stay.description), viewField("Address", stay.address)].filter(Boolean);
+  if (fields.length) pane.appendChild(el("div", { class: "view-fields" }, fields));
 
-  if (stay.url) {
-    wrap.appendChild(buildStayScrapeSection(stay));
-  }
+  const links = el("div", { class: "view-links" });
+  if (stay.url) links.appendChild(el("a", { href: stay.url, target: "_blank", rel: "noopener noreferrer", class: "secondary-btn", text: "Visit website →" }));
+  if (stay.address) links.appendChild(el("a", { href: googleMapsSearchUrl(stay.address), target: "_blank", rel: "noopener noreferrer", class: "secondary-btn", text: "Open map →" }));
+  if (links.children.length) pane.appendChild(links);
+
+  if (stay.url) pane.appendChild(buildStayScrapeSection(stay));
 
   const actions = el("div", { class: "item-actions" });
 
@@ -180,6 +214,45 @@ function buildStayDetails(card, stay) {
       loadStays();
       loadCoverage();
     },
+  });
+
+  actions.append(deleteBtn, el("button", { type: "button", class: "secondary-btn edit-toggle-btn", text: "Edit" }));
+  pane.appendChild(actions);
+  return pane;
+}
+
+function buildStayEditPane(card, stay) {
+  const pane = el("div", { class: "edit-pane" });
+
+  const nameInput = el("input", { type: "text", value: stay.name, required: "required" });
+  const descInput = el("textarea", { rows: "2" });
+  descInput.value = stay.description || "";
+  const urlInput = el("input", { type: "url", value: stay.url || "" });
+  const addressInput = el("input", { type: "text", value: stay.address || "" });
+  const startInput = el("input", { type: "date", value: toISODate(stay.start_date), required: "required" });
+  const endInput = el("input", { type: "date", value: toISODate(stay.end_date), required: "required" });
+  const bookedInput = el("input", { type: "checkbox" });
+  bookedInput.checked = stay.booked;
+
+  pane.append(
+    el("div", { class: "item-fields" }, [
+      el("div", { class: "field" }, [el("label", { text: "Name" }), nameInput]),
+      el("div", { class: "field" }, [el("label", { text: "Description" }), descInput]),
+      el("div", { class: "field" }, [el("label", { text: "URL" }), urlInput]),
+      el("div", { class: "field" }, [el("label", { text: "Address" }), addressInput]),
+      el("div", { class: "field" }, [el("label", { text: "Start date" }), startInput]),
+      el("div", { class: "field" }, [el("label", { text: "End date" }), endInput]),
+    ]),
+    el("label", { class: "checkbox-label" }, [bookedInput, document.createTextNode("Booked (this is the confirmed option)")])
+  );
+
+  const actions = el("div", { class: "item-actions" });
+
+  const cancelBtn = el("button", {
+    type: "button",
+    class: "cancel-btn cancel-edit-btn",
+    text: "Cancel",
+    onclick: () => card.replaceWith(stayCardElement(stay, { expanded: true })),
   });
 
   const saveBtn = el("button", {
@@ -204,6 +277,7 @@ function buildStayDetails(card, stay) {
             name,
             description: descInput.value.trim() || null,
             url: urlInput.value.trim() || null,
+            address: addressInput.value.trim() || null,
             start_date: dateInputToISO(startInput.value),
             end_date: dateInputToISO(endInput.value),
             booked: bookedInput.checked,
@@ -221,9 +295,9 @@ function buildStayDetails(card, stay) {
     },
   });
 
-  actions.append(deleteBtn, saveBtn);
-  wrap.appendChild(actions);
-  return wrap;
+  actions.append(cancelBtn, saveBtn);
+  pane.appendChild(actions);
+  return pane;
 }
 
 function buildStayScrapeSection(stay) {
@@ -284,6 +358,7 @@ function initAddStayForm() {
   const nameInput = el("input", { type: "text", required: "required", placeholder: "e.g. Hotel Le Marais" });
   const descInput = el("textarea", { rows: "2", placeholder: "Optional notes" });
   const urlInput = el("input", { type: "url", placeholder: "https://airbnb.com/rooms/..." });
+  const addressInput = el("input", { type: "text", placeholder: "Optional" });
   const startInput = el("input", { type: "date", required: "required" });
   const endInput = el("input", { type: "date", required: "required" });
   const bookedInput = el("input", { type: "checkbox" });
@@ -292,6 +367,7 @@ function initAddStayForm() {
     el("div", { class: "field" }, [el("label", { text: "Name *" }), nameInput]),
     el("div", { class: "field" }, [el("label", { text: "Description" }), descInput]),
     el("div", { class: "field" }, [el("label", { text: "URL" }), urlInput]),
+    el("div", { class: "field" }, [el("label", { text: "Address" }), addressInput]),
     el("div", { class: "field-row" }, [
       el("div", { class: "field" }, [el("label", { text: "Start date *" }), startInput]),
       el("div", { class: "field" }, [el("label", { text: "End date *" }), endInput]),
@@ -335,6 +411,7 @@ function initAddStayForm() {
           name,
           description: descInput.value.trim() || null,
           url: urlInput.value.trim() || null,
+          address: addressInput.value.trim() || null,
           start_date: dateInputToISO(startInput.value),
           end_date: dateInputToISO(endInput.value),
           booked: bookedInput.checked,

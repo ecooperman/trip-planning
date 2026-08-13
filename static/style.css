@@ -100,6 +100,23 @@ a {
   line-height: 1;
 }
 
+.app-nav-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* Same idea as .app-nav-icon, sized down for inline use inside a button/link
+   label rather than the nav bar (e.g. the trip page's "Agenda" link). */
+.btn-icon {
+  display: inline-flex;
+  vertical-align: -3px;
+}
+
+.btn-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
 .app-nav-link.active {
   color: var(--accent);
 }
@@ -372,6 +389,50 @@ label.checkbox-label input {
   padding: 10px;
 }
 
+/* --- view pane: read-only display shown by default, with an Edit button
+   that swaps to the (hidden-until-then) edit form --- */
+
+.view-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.view-field-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.view-field-value {
+  font-size: 14px;
+  white-space: pre-wrap;
+  margin-top: 2px;
+}
+
+.view-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+/* A visible break between the data (description/address/etc.) and the
+   action links (Visit website/Open map/...) when links directly follow
+   fields - applies wherever that pattern occurs (Trip/Stay/Activity view
+   panes) without needing a class change at each call site. */
+.view-fields + .view-links {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.view-links a {
+  text-decoration: none;
+}
+
 /* --- badges (cost, dates, trip name, archived/booked status) --- */
 
 .item-badge {
@@ -470,9 +531,9 @@ a.secondary-btn {
 /* --- OG-tag / Instagram / Airbnb preview fetch --- */
 
 .scrape-section {
-  margin-top: 4px;
-  padding-top: 12px;
-  border-top: 1px dashed var(--border);
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
 }
 
 .scrape-btn {
@@ -590,6 +651,39 @@ a.secondary-btn {
   font-weight: 600;
 }
 
+/* --- sticky "current stay" banner on agenda.html - stays pinned to the top
+   as the page scrolls, defaults to today's stay and updates as the day row
+   scrolls horizontally, see agenda.js --- */
+
+.stay-banner {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  background: var(--accent-bg);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.stay-banner-pin {
+  flex-shrink: 0;
+}
+
+.stay-banner-link {
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.stay-banner-link:hover {
+  text-decoration: underline;
+}
+
 /* --- trip header on trip.html --- */
 
 .trip-header {
@@ -685,6 +779,18 @@ main.wide {
   color: var(--muted);
 }
 
+.agenda-day-stay-address {
+  display: block;
+  margin-top: 1px;
+  font-size: 11px;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.agenda-day-stay-address:hover {
+  text-decoration: underline;
+}
+
 .agenda-gap {
   min-height: 28px;
   display: flex;
@@ -718,9 +824,27 @@ main.wide {
   border-radius: 8px;
   padding: 8px 10px;
   cursor: grab;
+  /* Stops touch from starting a page-scroll gesture the instant a finger
+     presses an entry, so the Pointer Events drag (see agenda.js) owns the
+     gesture instead - swiping to scroll still works everywhere else. */
+  touch-action: none;
+  user-select: none;
 }
 
 .agenda-entry:active {
+  cursor: grabbing;
+}
+
+.agenda-entry.dragging {
+  opacity: 0.35;
+}
+
+.agenda-drag-ghost {
+  position: fixed;
+  z-index: 1000;
+  pointer-events: none;
+  opacity: 0.95;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
   cursor: grabbing;
 }
 
@@ -743,10 +867,21 @@ main.wide {
   margin-top: 6px;
 }
 
+.agenda-entry-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 6px;
+}
+
 .agenda-entry-link {
   display: inline-block;
-  margin-top: 6px;
   font-size: 11px;
+}
+
+.agenda-entry-directions {
+  font-weight: 700;
+  color: var(--accent);
 }
 
 .agenda-unscheduled {
