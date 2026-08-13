@@ -270,24 +270,28 @@ function agendaEntryElement(activity, { nextActivity, stay } = {}) {
   // (nextActivity/stay come from renderDayColumn), not the unscheduled
   // sidebar, which has no day/stay context to route toward.
   if (nextActivity) {
+    const dest = locationQueryFor(nextActivity);
     links.appendChild(
       el("a", {
-        href: googleMapsDirectionsUrl(locationQueryFor(nextActivity)),
+        href: googleMapsDirectionsUrl(dest),
         target: "_blank",
         rel: "noopener noreferrer",
         class: "agenda-entry-link agenda-entry-directions",
         text: "Next →",
+        onclick: (e) => openGoogleMapsPreferringApp(e, "directions", dest),
       })
     );
   }
   if (stay) {
+    const dest = locationQueryFor(stay);
     links.appendChild(
       el("a", {
-        href: googleMapsDirectionsUrl(locationQueryFor(stay)),
+        href: googleMapsDirectionsUrl(dest),
         target: "_blank",
         rel: "noopener noreferrer",
         class: "agenda-entry-link agenda-entry-directions",
         text: "Stay →",
+        onclick: (e) => openGoogleMapsPreferringApp(e, "directions", dest),
       })
     );
   }
@@ -332,6 +336,7 @@ function renderDayColumn(dayIso) {
           rel: "noopener noreferrer",
           class: "agenda-day-stay-address",
           text: stay.address,
+          onclick: (e) => openGoogleMapsPreferringApp(e, "search", stay.address),
         })
       );
     }
@@ -383,6 +388,7 @@ function renderStayBanner(dayIso) {
       rel: "noopener noreferrer",
       class: "stay-banner-link",
       text: `${stay.name} — ${stay.address}`,
+      onclick: (e) => openGoogleMapsPreferringApp(e, "search", stay.address),
     })
   );
 }

@@ -196,7 +196,18 @@ function buildStayViewPane(card, stay) {
 
   const links = el("div", { class: "view-links" });
   if (stay.url) links.appendChild(el("a", { href: stay.url, target: "_blank", rel: "noopener noreferrer", class: "secondary-btn", text: "Visit website →" }));
-  if (stay.address) links.appendChild(el("a", { href: googleMapsSearchUrl(stay.address), target: "_blank", rel: "noopener noreferrer", class: "secondary-btn", text: "Open map →" }));
+  if (stay.address) {
+    links.appendChild(
+      el("a", {
+        href: googleMapsSearchUrl(stay.address),
+        target: "_blank",
+        rel: "noopener noreferrer",
+        class: "secondary-btn",
+        text: "Open map →",
+        onclick: (e) => openGoogleMapsPreferringApp(e, "search", stay.address),
+      })
+    );
+  }
   if (links.children.length) pane.appendChild(links);
 
   if (stay.url) pane.appendChild(buildStayScrapeSection(stay));

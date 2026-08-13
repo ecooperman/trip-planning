@@ -176,6 +176,64 @@ function googleMapsDirectionsUrl(destination) {
   return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}&travelmode=driving`;
 }
 
+function isIOSDevice() {
+  if (/iPad|iPhone|iPod/.test(navigator.userAgent)) return true;
+  // iPadOS 13+ can report as "MacIntel" (a desktop Safari UA) unless
+  // "Request Desktop Website" is off - multi-touch is the giveaway a real
+  // Mac doesn't have.
+  return navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
+}
+
+function isAndroidDevice() {
+  return /Android/.test(navigator.userAgent);
+}
+
+// Wire this as an onclick alongside an href of the plain googleMapsSearchUrl/
+// googleMapsDirectionsUrl web URL (so the link still works if this can't
+// run) on any link built from those two functions. On desktop it's a no-op
+// - the plain href already does the right thing.
+//
+// On phones, it prefers the installed Google Maps app over the mobile web
+// view via Google's own app-specific URL schemes - this matters a lot from
+// a home-screen PWA, where Universal/App Links (which normally hand a
+// plain https://maps.google.com/... link off to the app in a regular
+// browser tab) frequently don't fire the same way, leaving you stuck in
+// the cramped web view instead of the real app.
+//
+// `kind` is "search" (just show a place) or "directions" (route to it,
+// origin omitted so it defaults to current location); `query` is an
+// address or place name - the same input already passed to
+// googleMapsSearchUrl/googleMapsDirectionsUrl for the href.
+function openGoogleMapsPreferringApp(e, kind, query) {
+  if (!isIOSDevice() && !isAndroidDevice()) return; // let the plain <a href> handle desktop
+
+  e.preventDefault();
+  const encoded = encodeURIComponent(query);
+  const webUrl = kind === "directions" ? googleMapsDirectionsUrl(query) : googleMapsSearchUrl(query);
+
+  if (isAndroidDevice()) {
+    // The intent:// scheme has a built-in fallback (S.browser_fallback_url)
+    // for "app not installed" - no timing hack needed, unlike iOS below.
+    const params = kind === "directions" ? `daddr=${encoded}&directionsmode=driving` : `q=${encoded}`;
+    window.location.href =
+      `intent://maps.google.com/maps?${params}#Intent;scheme=https;` +
+      `package=com.google.android.apps.maps;S.browser_fallback_url=${encodeURIComponent(webUrl)};end`;
+    return;
+  }
+
+  // iOS custom schemes have no built-in fallback, so do it ourselves: try
+  // the app, and if we're still here (foregrounded) shortly after, nothing
+  // intercepted it - open the web version instead.
+  const appUrl = kind === "directions" ? `comgooglemaps://?daddr=${encoded}&directionsmode=driving` : `comgooglemaps://?q=${encoded}`;
+  const start = Date.now();
+  window.location.href = appUrl;
+  setTimeout(() => {
+    if (!document.hidden && Date.now() - start < 2000) {
+      window.open(webUrl, "_blank", "noopener,noreferrer");
+    }
+  }, 1500);
+}
+
 // Best-effort text to route to for something that might not have a real
 // address on file yet - falls back to its name, which Maps can usually
 // still resolve to a real place via search.
