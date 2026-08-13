@@ -240,7 +240,7 @@ function makeDraggable(entryEl, activity) {
 
 // --- rendering -----------------------------------------------------------------
 
-function agendaEntryElement(activity, { nextActivity, stay } = {}) {
+function agendaEntryElement(activity, { nextActivity, stay, showOwnDirections = false } = {}) {
   const entry = el("div", { class: "agenda-entry" });
 
   if (activity.scheduled_start) {
@@ -266,9 +266,24 @@ function agendaEntryElement(activity, { nextActivity, stay } = {}) {
   if (activity.map_link) links.appendChild(el("a", { href: activity.map_link, target: "_blank", rel: "noopener noreferrer", class: "agenda-entry-link", text: "Map →" }));
 
   // Directions are always "from wherever you are right now" (see
-  // googleMapsDirectionsUrl) - only shown for scheduled-in-a-day entries
-  // (nextActivity/stay come from renderDayColumn), not the unscheduled
-  // sidebar, which has no day/stay context to route toward.
+  // googleMapsDirectionsUrl). Scheduled-in-a-day entries get "Next"/"Stay"
+  // (nextActivity/stay come from renderDayColumn); unscheduled sidebar
+  // entries have no day/stay context to route toward, but still want a way
+  // to get there directly - e.g. deciding on the fly to swap it in for
+  // whatever's currently planned (see renderUnscheduledList).
+  if (showOwnDirections) {
+    const dest = locationQueryFor(activity);
+    links.appendChild(
+      el("a", {
+        href: googleMapsDirectionsUrl(dest),
+        target: "_blank",
+        rel: "noopener noreferrer",
+        class: "agenda-entry-link agenda-entry-directions",
+        text: "Directions →",
+        onclick: (e) => openGoogleMapsPreferringApp(e, "directions", dest),
+      })
+    );
+  }
   if (nextActivity) {
     const dest = locationQueryFor(nextActivity);
     links.appendChild(
@@ -360,7 +375,7 @@ function renderUnscheduledList() {
   const unscheduled = activities.filter((a) => !a.scheduled_start);
   document.getElementById("unscheduled-empty").hidden = unscheduled.length !== 0;
   for (const activity of unscheduled) {
-    list.appendChild(agendaEntryElement(activity));
+    list.appendChild(agendaEntryElement(activity, { showOwnDirections: true }));
   }
 }
 
