@@ -347,8 +347,26 @@ label.checkbox-label input {
   overflow: hidden;
 }
 
-.item-card.archived {
+.item-card.archived,
+.item-card.done {
   opacity: 0.75;
+}
+
+.item-card.done .item-summary-title {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+
+/* Checkbox at the front of an Activity's summary row - lets you check
+   something off without expanding the card, same reasoning as the
+   Agenda quick-link on Trip cards (see app.js): stopPropagation on click
+   keeps it from also toggling expand/collapse. */
+.item-summary-done-toggle {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+  cursor: pointer;
 }
 
 .item-summary {
@@ -778,6 +796,28 @@ a.secondary-btn {
   min-width: 160px;
 }
 
+/* --- "Duplicate to trip..." picker in an activity's action row - same
+   trigger-button-reveals-a-select-row shape as .attach-existing above --- */
+
+.duplicate-picker-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Same reason .add-card.hidden exists: .duplicate-picker-row's own
+   `display: flex` and the generic `.hidden { display: none; }` have equal
+   specificity, and this rule comes later in the file, so without this
+   explicit override the row would win and stay visible. */
+.duplicate-picker-row.hidden {
+  display: none;
+}
+
+.duplicate-picker-row select {
+  flex: 1;
+  min-width: 160px;
+}
+
 /* --- agenda page: horizontally-scrolling day columns, each an ordered
    stack of scheduled entries and drop-target gaps between them --- */
 
@@ -879,6 +919,14 @@ main.wide {
 
 .agenda-entry.dragging {
   opacity: 0.35;
+}
+
+.agenda-entry.done {
+  opacity: 0.6;
+}
+
+.agenda-entry.done .agenda-entry-name {
+  text-decoration: line-through;
 }
 
 .agenda-drag-ghost {

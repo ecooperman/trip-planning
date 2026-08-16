@@ -69,6 +69,7 @@ class Activity(Base):
     # Separate from `description` (which tends to hold a scraped/copied
     # summary of the place) - notes is for the user's own reminders.
     notes = Column(Text, nullable=True)
+    done = Column(Boolean, nullable=False, default=False)
 
     # Both optional - null means "not yet scheduled," which is what puts it
     # in the agenda page's unscheduled sidebar rather than a day column.

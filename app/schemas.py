@@ -129,6 +129,7 @@ class ActivityBase(UrlValidator, CostValidator, ScheduleValidator):
     # activities with no scheduled_start in an unscheduled sidebar.
     scheduled_start: Optional[datetime] = None
     scheduled_end: Optional[datetime] = None
+    done: bool = False
 
 
 class ActivityCreate(ActivityBase):
@@ -150,6 +151,7 @@ class ActivityUpdate(UrlValidator, CostValidator, ScheduleValidator):
     notes: Optional[str] = None
     scheduled_start: Optional[datetime] = None
     scheduled_end: Optional[datetime] = None
+    done: Optional[bool] = None
 
 
 class Activity(ActivityBase):

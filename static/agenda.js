@@ -240,8 +240,13 @@ function makeDraggable(entryEl, activity) {
 
 // --- rendering -----------------------------------------------------------------
 
-function agendaEntryElement(activity, { nextActivity, stay, showOwnDirections = false } = {}) {
-  const entry = el("div", { class: "agenda-entry" });
+function agendaEntryElement(activity) {
+  // Reflects (doesn't toggle) done state - marking done happens on the
+  // activity's own card on trip.html/activities.html. No checkbox here:
+  // the whole entry is a pointerdown-based drag handle (see makeDraggable
+  // below), and a nested control would fight that the same way it would
+  // fight expand/collapse on the item-card summary.
+  const entry = el("div", { class: "agenda-entry" + (activity.done ? " done" : "") });
 
   if (activity.scheduled_start) {
     entry.appendChild(
@@ -265,51 +270,24 @@ function agendaEntryElement(activity, { nextActivity, stay, showOwnDirections = 
   if (activity.url) links.appendChild(el("a", { href: activity.url, target: "_blank", rel: "noopener noreferrer", class: "agenda-entry-link", text: "Open link →" }));
   if (activity.map_link) links.appendChild(el("a", { href: activity.map_link, target: "_blank", rel: "noopener noreferrer", class: "agenda-entry-link", text: "Map →" }));
 
-  // Directions are always "from wherever you are right now" (see
-  // googleMapsDirectionsUrl). Scheduled-in-a-day entries get "Next"/"Stay"
-  // (nextActivity/stay come from renderDayColumn); unscheduled sidebar
-  // entries have no day/stay context to route toward, but still want a way
-  // to get there directly - e.g. deciding on the fly to swap it in for
-  // whatever's currently planned (see renderUnscheduledList).
-  if (showOwnDirections) {
-    const dest = locationQueryFor(activity);
-    links.appendChild(
-      el("a", {
-        href: googleMapsDirectionsUrl(dest),
-        target: "_blank",
-        rel: "noopener noreferrer",
-        class: "agenda-entry-link agenda-entry-directions",
-        text: "Directions →",
-        onclick: (e) => openGoogleMapsPreferringApp(e, "directions", dest),
-      })
-    );
-  }
-  if (nextActivity) {
-    const dest = locationQueryFor(nextActivity);
-    links.appendChild(
-      el("a", {
-        href: googleMapsDirectionsUrl(dest),
-        target: "_blank",
-        rel: "noopener noreferrer",
-        class: "agenda-entry-link agenda-entry-directions",
-        text: "Next →",
-        onclick: (e) => openGoogleMapsPreferringApp(e, "directions", dest),
-      })
-    );
-  }
-  if (stay) {
-    const dest = locationQueryFor(stay);
-    links.appendChild(
-      el("a", {
-        href: googleMapsDirectionsUrl(dest),
-        target: "_blank",
-        rel: "noopener noreferrer",
-        class: "agenda-entry-link agenda-entry-directions",
-        text: "Stay →",
-        onclick: (e) => openGoogleMapsPreferringApp(e, "directions", dest),
-      })
-    );
-  }
+  // Directions are always "from wherever you are right now" to this
+  // activity's own location - the same link on every entry, scheduled or
+  // not, rather than the old "Next"/"Stay" variants (which pointed at the
+  // *next* activity or the day's stay - confusing since the label didn't
+  // say where "next" actually was). Getting back to the stay now lives
+  // solely on the day header / sticky banner link, which also opens
+  // directions - no need to duplicate it on every entry too.
+  const dest = locationQueryFor(activity);
+  links.appendChild(
+    el("a", {
+      href: googleMapsDirectionsUrl(dest),
+      target: "_blank",
+      rel: "noopener noreferrer",
+      class: "agenda-entry-link agenda-entry-directions",
+      text: "Directions →",
+      onclick: (e) => openGoogleMapsPreferringApp(e, "directions", dest),
+    })
+  );
 
   if (links.children.length) entry.appendChild(links);
 
@@ -346,12 +324,12 @@ function renderDayColumn(dayIso) {
     if (stay.address) {
       header.appendChild(
         el("a", {
-          href: googleMapsSearchUrl(stay.address),
+          href: googleMapsDirectionsUrl(stay.address),
           target: "_blank",
           rel: "noopener noreferrer",
           class: "agenda-day-stay-address",
           text: stay.address,
-          onclick: (e) => openGoogleMapsPreferringApp(e, "search", stay.address),
+          onclick: (e) => openGoogleMapsPreferringApp(e, "directions", stay.address),
         })
       );
     }
@@ -361,8 +339,7 @@ function renderDayColumn(dayIso) {
   const gaps = buildGapsForDay(dayIso, dayActivities);
   column.appendChild(gapElement(gaps[0]));
   dayActivities.forEach((activity, i) => {
-    const nextActivity = dayActivities[i + 1] || null;
-    column.appendChild(agendaEntryElement(activity, { nextActivity, stay }));
+    column.appendChild(agendaEntryElement(activity));
     column.appendChild(gapElement(gaps[i + 1]));
   });
 
@@ -375,7 +352,7 @@ function renderUnscheduledList() {
   const unscheduled = activities.filter((a) => !a.scheduled_start);
   document.getElementById("unscheduled-empty").hidden = unscheduled.length !== 0;
   for (const activity of unscheduled) {
-    list.appendChild(agendaEntryElement(activity, { showOwnDirections: true }));
+    list.appendChild(agendaEntryElement(activity));
   }
 }
 
@@ -398,12 +375,12 @@ function renderStayBanner(dayIso) {
   banner.appendChild(el("span", { class: "stay-banner-pin", "aria-hidden": "true", text: "📍" }));
   banner.appendChild(
     el("a", {
-      href: googleMapsSearchUrl(stay.address),
+      href: googleMapsDirectionsUrl(stay.address),
       target: "_blank",
       rel: "noopener noreferrer",
       class: "stay-banner-link",
       text: `${stay.name} — ${stay.address}`,
-      onclick: (e) => openGoogleMapsPreferringApp(e, "search", stay.address),
+      onclick: (e) => openGoogleMapsPreferringApp(e, "directions", stay.address),
     })
   );
 }

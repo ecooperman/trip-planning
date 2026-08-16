@@ -13,9 +13,43 @@ const ACTIVITIES_API = `${API_BASE}/activities`;
 
 function activityCardElement(activity, opts = {}) {
   const { expanded = false, showTripBadge = false, onChanged, onDeleted, onUnlink } = opts;
-  const card = el("div", { class: "item-card" + (expanded ? " expanded" : ""), "data-id": activity.id });
+  const card = el("div", { class: "item-card" + (expanded ? " expanded" : "") + (activity.done ? " done" : ""), "data-id": activity.id });
 
-  const summary = el("button", { type: "button", class: "item-summary", "aria-expanded": String(expanded) });
+  // A <div role="button"> rather than a real <button> - the done checkbox
+  // below is interactive content, which isn't valid (and is flaky for
+  // keyboard/screen-reader nav) nested inside a real <button>. Same fix as
+  // the Trip card's Agenda link (see app.js).
+  const summary = el("div", { class: "item-summary", role: "button", tabindex: "0", "aria-expanded": String(expanded) });
+
+  const doneCheckbox = el("input", {
+    type: "checkbox",
+    class: "item-summary-done-toggle",
+    "aria-label": `Mark "${activity.name}" as done`,
+  });
+  // Set as a property, not an attrs["checked"] value passed to el() - the
+  // "checked" HTML attribute is presence-based (setAttribute("checked",
+  // "false") would still render it checked), same reason trip.js sets
+  // bookedInput.checked this way rather than through el()'s attrs.
+  doneCheckbox.checked = activity.done;
+  doneCheckbox.addEventListener("click", (e) => e.stopPropagation());
+  doneCheckbox.addEventListener("change", async () => {
+    const done = doneCheckbox.checked;
+    try {
+      const updated = await fetchJSON(`${ACTIVITIES_API}/${activity.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ done }),
+      });
+      activity.done = updated.done;
+      card.classList.toggle("done", updated.done);
+      if (onChanged) onChanged(updated);
+    } catch (err) {
+      doneCheckbox.checked = !done;
+      showMessage(err.message, "error");
+    }
+  });
+  summary.appendChild(doneCheckbox);
+
   summary.appendChild(el("span", { class: "item-summary-title", text: activity.name }));
 
   const schedule = formatScheduleBadge(activity.scheduled_start, activity.scheduled_end);
@@ -36,10 +70,17 @@ function activityCardElement(activity, opts = {}) {
   summary.appendChild(el("span", { class: "item-chevron", "aria-hidden": "true", text: "▸" }));
 
   const details = el("div", { class: "item-details" + (expanded ? "" : " hidden") });
-  summary.addEventListener("click", () => {
+  function toggle() {
     const isExpanded = card.classList.toggle("expanded");
     details.classList.toggle("hidden", !isExpanded);
     summary.setAttribute("aria-expanded", String(isExpanded));
+  }
+  summary.addEventListener("click", toggle);
+  summary.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      toggle();
+    }
   });
 
   card.append(summary, details);
@@ -114,10 +155,107 @@ function buildActivityViewPane(card, activity, { onChanged, onDeleted, onUnlink,
     );
   }
 
+  actions.append(buildDuplicatePicker(activity));
   actions.append(el("button", { type: "button", class: "secondary-btn edit-toggle-btn", text: "Edit" }));
   pane.appendChild(actions);
 
   return pane;
+}
+
+// "Duplicate to trip..." - for re-doing an activity you already marked done
+// on a past trip. Copies the place's own details (name/description/notes/
+// address/phone/url/cost) to a brand-new activity on the chosen trip;
+// deliberately drops confirmation_number, done, and scheduled_start/end -
+// those describe a specific past booking/occurrence, not the place itself.
+// Trips are fetched lazily (only once the trigger is clicked) rather than
+// upfront on every card render, since most cards never open this.
+function buildDuplicatePicker(activity) {
+  const wrap = el("div", { class: "duplicate-picker" });
+  const triggerBtn = el("button", { type: "button", class: "secondary-btn", text: "Duplicate to trip..." });
+  const pickerRow = el("div", { class: "duplicate-picker-row hidden" });
+  const select = el("select", {});
+
+  const confirmBtn = el("button", {
+    type: "button",
+    class: "save-btn",
+    text: "Duplicate",
+    onclick: async () => {
+      const tripId = select.value;
+      if (!tripId) return;
+      const tripLabel = select.options[select.selectedIndex].text;
+      confirmBtn.disabled = true;
+      try {
+        await fetchJSON(ACTIVITIES_API, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: activity.name,
+            description: activity.description,
+            url: activity.url,
+            cost: activity.cost,
+            address: activity.address,
+            phone_number: activity.phone_number,
+            map_link: activity.map_link,
+            notes: activity.notes,
+            trip_id: Number(tripId),
+          }),
+        });
+        showMessage(`Duplicated "${activity.name}" to ${tripLabel}.`, "success");
+        pickerRow.classList.add("hidden");
+        triggerBtn.classList.remove("hidden");
+      } catch (err) {
+        showMessage(err.message, "error");
+      } finally {
+        confirmBtn.disabled = false;
+      }
+    },
+  });
+
+  const cancelBtn = el("button", {
+    type: "button",
+    class: "cancel-btn",
+    text: "Cancel",
+    onclick: () => {
+      pickerRow.classList.add("hidden");
+      triggerBtn.classList.remove("hidden");
+    },
+  });
+
+  pickerRow.append(select, confirmBtn, cancelBtn);
+
+  triggerBtn.addEventListener("click", async () => {
+    triggerBtn.classList.add("hidden");
+    pickerRow.classList.remove("hidden");
+    select.innerHTML = "";
+    select.disabled = true;
+    confirmBtn.disabled = true;
+    select.appendChild(el("option", { value: "", text: "Loading trips..." }));
+    try {
+      const trips = await fetchJSON(TRIPS_API);
+      const currentTripIds = new Set((activity.trips || []).map((t) => t.id));
+      const options = trips.filter((t) => !currentTripIds.has(t.id));
+      select.innerHTML = "";
+      if (options.length === 0) {
+        select.appendChild(el("option", { value: "", text: "No other trips yet" }));
+      } else {
+        select.disabled = false;
+        confirmBtn.disabled = false;
+        select.appendChild(el("option", { value: "", text: "Choose a trip..." }));
+        for (const trip of options) {
+          select.appendChild(
+            el("option", { value: String(trip.id), text: trip.archived ? `${trip.location} (archived)` : trip.location })
+          );
+        }
+      }
+    } catch (err) {
+      select.innerHTML = "";
+      select.appendChild(el("option", { value: "", text: "Failed to load trips" }));
+      showMessage(err.message, "error");
+    }
+  });
+
+  wrap.append(triggerBtn, pickerRow);
+  return wrap;
 }
 
 function buildActivityEditPane(card, activity, { onChanged, onDeleted, onUnlink, showTripBadge }) {
