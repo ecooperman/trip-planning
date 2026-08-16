@@ -412,6 +412,34 @@ label.checkbox-label input {
   color: var(--accent);
 }
 
+/* Compact status icons (scheduled/on-a-trip) in an activity's summary row -
+   replaces what used to be full-text badges (a date range or trip name),
+   which at their widest pushed the activity name itself down to a sliver.
+   The icon alone signals the status; the real value is a title tooltip
+   here and a proper field in the expanded view pane. */
+.item-summary-indicator {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--muted);
+}
+
+.item-summary-indicator svg {
+  width: 14px;
+  height: 14px;
+}
+
+.item-summary-indicator[data-icon="calendar"] {
+  color: var(--success);
+}
+
+.item-summary-indicator[data-icon="compass"] {
+  color: #375a99;
+}
+
 .item-chevron {
   flex-shrink: 0;
   color: var(--muted);

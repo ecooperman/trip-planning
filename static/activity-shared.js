@@ -52,19 +52,29 @@ function activityCardElement(activity, opts = {}) {
 
   summary.appendChild(el("span", { class: "item-summary-title", text: activity.name }));
 
+  // Small icon indicators, not full-text badges - a long date range or trip
+  // name in the summary row was pushing the activity name itself down to a
+  // sliver (or off entirely) once it needed to ellipsis. The icon alone is
+  // enough to signal "this has a schedule / is on a trip"; the actual
+  // values live in the expanded view pane's fields below, and as a title
+  // tooltip here for a quick hover/long-press.
   const schedule = formatScheduleBadge(activity.scheduled_start, activity.scheduled_end);
-  if (schedule) summary.appendChild(el("span", { class: "item-badge item-badge-date", text: schedule }));
+  if (schedule) {
+    summary.appendChild(
+      el("span", { class: "item-summary-indicator", "data-icon": "calendar", "aria-hidden": "true", title: `Scheduled: ${schedule}` })
+    );
+  }
 
   const cost = formatCost(activity.cost);
   if (cost) summary.appendChild(el("span", { class: "item-badge item-badge-cost", text: cost }));
 
   if (showTripBadge) {
     const trip = activity.trips && activity.trips[0];
-    summary.appendChild(
-      trip
-        ? el("span", { class: "item-badge item-badge-trip", text: trip.location })
-        : el("span", { class: "item-badge item-badge-muted", text: "Unassociated" })
-    );
+    if (trip) {
+      summary.appendChild(
+        el("span", { class: "item-summary-indicator", "data-icon": "compass", "aria-hidden": "true", title: `Trip: ${trip.location}` })
+      );
+    }
   }
 
   summary.appendChild(el("span", { class: "item-chevron", "aria-hidden": "true", text: "▸" }));
@@ -85,6 +95,7 @@ function activityCardElement(activity, opts = {}) {
 
   card.append(summary, details);
   details.appendChild(buildActivityViewEdit(card, activity, { onChanged, onDeleted, onUnlink, showTripBadge }));
+  applyIcons(card);
   return card;
 }
 
@@ -100,7 +111,16 @@ function buildActivityViewEdit(card, activity, opts) {
 function buildActivityViewPane(card, activity, { onChanged, onDeleted, onUnlink, showTripBadge }) {
   const pane = el("div", { class: "view-pane" });
 
+  // Scheduled/Trip used to be full-text badges in the summary row - now
+  // just an icon there (see activityCardElement), so the actual values
+  // need a home here instead of disappearing entirely.
+  const tripField = showTripBadge
+    ? viewField("Trip", activity.trips && activity.trips[0] ? activity.trips[0].location : "Unassociated")
+    : null;
+
   const fields = [
+    viewField("Scheduled", formatScheduleBadge(activity.scheduled_start, activity.scheduled_end)),
+    tripField,
     viewField("Description", activity.description),
     viewField("Notes", activity.notes),
     viewField("Address", activity.address),
