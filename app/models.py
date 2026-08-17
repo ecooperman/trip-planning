@@ -96,9 +96,12 @@ class Stay(Base):
     """A lodging option (or booking) for a trip. Always belongs to exactly
     one trip - created from within the trip's page, not standalone.
 
-    Only one Stay per trip should have booked=True at a time; crud enforces
-    that by archiving (not deleting) every other stay on the trip whenever
-    one is marked booked, so past options stay visible for reference.
+    booked and archived are independent per-stay flags, not mutually
+    exclusive across a trip's stays - a trip can have several booked stays
+    at once (different, non-overlapping date ranges). archived is a manual
+    "not considering this option anymore" marker (see the stay's own
+    Archive/Unarchive button), never an automatic side effect of another
+    stay being booked.
     """
 
     __tablename__ = "stays"

@@ -739,23 +739,30 @@ a.secondary-btn {
   font-weight: 600;
 }
 
-/* --- sticky "current stay" banner on agenda.html - stays pinned to the top
-   as the page scrolls, defaults to today's stay and updates as the day row
-   scrolls horizontally, see agenda.js --- */
+/* --- stay summary on agenda.html - stays pinned to the top as the page
+   scrolls, one row per booked stay on the trip (usually just one), see
+   renderStaySummary in agenda.js --- */
 
 .stay-banner {
   position: sticky;
   top: 0;
   z-index: 30;
   display: flex;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  gap: 6px;
   padding: 10px 14px;
   margin-bottom: 16px;
   background: var(--accent-bg);
   border: 1px solid var(--accent);
   border-radius: 8px;
   font-size: 13px;
+}
+
+.stay-banner-entry {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .stay-banner-pin {
@@ -770,6 +777,12 @@ a.secondary-btn {
 
 .stay-banner-link:hover {
   text-decoration: underline;
+}
+
+.stay-banner-dates {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
 }
 
 /* --- trip header on trip.html --- */
@@ -887,18 +900,6 @@ main.wide {
   margin-top: 2px;
   font-size: 12px;
   color: var(--muted);
-}
-
-.agenda-day-stay-address {
-  display: block;
-  margin-top: 1px;
-  font-size: 11px;
-  color: var(--accent);
-  text-decoration: none;
-}
-
-.agenda-day-stay-address:hover {
-  text-decoration: underline;
 }
 
 .agenda-gap {

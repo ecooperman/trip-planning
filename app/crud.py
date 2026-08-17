@@ -239,16 +239,6 @@ def get_stay(db: Session, stay_id: int):
     return db.query(models.Stay).filter(models.Stay.id == stay_id).first()
 
 
-def _archive_other_stays(db: Session, trip_id: int, keep_stay_id: int) -> None:
-    """Once a stay on a trip is booked, every other stay on that same trip
-    becomes archived (and un-booked, in case more than one was booked) -
-    they stay around for reference rather than being deleted."""
-    db.query(models.Stay).filter(
-        models.Stay.trip_id == trip_id, models.Stay.id != keep_stay_id
-    ).update({"booked": False, "archived": True}, synchronize_session=False)
-    db.commit()
-
-
 def create_stay(db: Session, stay: schemas.StayCreate):
     db_trip = get_trip(db, stay.trip_id)
     if db_trip is None:
@@ -257,13 +247,16 @@ def create_stay(db: Session, stay: schemas.StayCreate):
     db.add(db_stay)
     db.commit()
     db.refresh(db_stay)
-    if db_stay.booked:
-        _archive_other_stays(db, db_stay.trip_id, db_stay.id)
-        db.refresh(db_stay)
     return db_stay
 
 
 def update_stay(db: Session, stay_id: int, updates: schemas.StayUpdate):
+    # booked and archived are both plain, independent flags on the stay
+    # itself - no cross-stay side effects. A trip can legitimately have
+    # more than one booked stay at once (different date ranges), so
+    # marking one booked must never silently touch its siblings. Archiving
+    # an option you're no longer considering is a deliberate, separate
+    # action (see the Archive/Unarchive button on the stay's view pane).
     db_stay = get_stay(db, stay_id)
     if db_stay is None:
         return None
@@ -271,9 +264,6 @@ def update_stay(db: Session, stay_id: int, updates: schemas.StayUpdate):
         setattr(db_stay, field, value)
     db.commit()
     db.refresh(db_stay)
-    if db_stay.booked:
-        _archive_other_stays(db, db_stay.trip_id, db_stay.id)
-        db.refresh(db_stay)
     return db_stay
 
 

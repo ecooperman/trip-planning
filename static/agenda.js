@@ -318,22 +318,11 @@ function renderDayColumn(dayIso) {
 
   const header = el("div", { class: "agenda-day-header" });
   header.appendChild(el("div", { class: "agenda-day-date", text: formatDateBadge(`${dayIso}T00:00:00`) }));
+  // Just the name here - the address/directions link lives once in the
+  // stay summary above the day columns (see renderStaySummary) rather than
+  // being repeated on every day.
   const stay = findStayForDay(dayIso);
-  if (stay) {
-    header.appendChild(el("div", { class: "agenda-day-stay", text: `📍 ${stay.name}` }));
-    if (stay.address) {
-      header.appendChild(
-        el("a", {
-          href: googleMapsDirectionsUrl(stay.address),
-          target: "_blank",
-          rel: "noopener noreferrer",
-          class: "agenda-day-stay-address",
-          text: stay.address,
-          onclick: (e) => openGoogleMapsPreferringApp(e, "directions", stay.address),
-        })
-      );
-    }
-  }
+  if (stay) header.appendChild(el("div", { class: "agenda-day-stay", text: `📍 ${stay.name}` }));
   column.appendChild(header);
 
   const gaps = buildGapsForDay(dayIso, dayActivities);
@@ -356,59 +345,50 @@ function renderUnscheduledList() {
   }
 }
 
-// --- sticky "current stay" banner --------------------------------------------
+// --- sticky stay summary --------------------------------------------------
 //
-// Defaults to today's stay (or the trip's first stay if it hasn't started
-// yet, or its last if the trip is already over), then updates as the user
-// scrolls the day row horizontally - see initStayBannerScrollSync.
+// A static list of every booked stay on the trip, each with its own
+// directions link and date range - shown once above the day columns rather
+// than swapping between them as you scroll (which only ever showed one
+// stay at a time and got ambiguous right at the handoff between two
+// stays). Each day's own header still names which stay it belongs to (see
+// renderDayColumn) - the address/directions link lives here instead of
+// being repeated on every single day.
 
-function renderStayBanner(dayIso) {
+function renderStaySummary() {
   const banner = document.getElementById("stay-banner");
-  const stay = dayIso ? findStayForDay(dayIso) : null;
-  if (!stay || !stay.address) {
+  banner.innerHTML = "";
+
+  const activeStays = stays
+    .filter((s) => s.booked && !s.archived)
+    .slice()
+    .sort((a, b) => a.start_date.localeCompare(b.start_date));
+
+  if (!activeStays.length) {
     banner.classList.add("hidden");
-    banner.innerHTML = "";
     return;
   }
   banner.classList.remove("hidden");
-  banner.innerHTML = "";
-  banner.appendChild(el("span", { class: "stay-banner-pin", "aria-hidden": "true", text: "📍" }));
-  banner.appendChild(
-    el("a", {
-      href: googleMapsDirectionsUrl(stay.address),
-      target: "_blank",
-      rel: "noopener noreferrer",
-      class: "stay-banner-link",
-      text: `${stay.name} — ${stay.address}`,
-      onclick: (e) => openGoogleMapsPreferringApp(e, "directions", stay.address),
-    })
-  );
-}
 
-function initStayBannerScrollSync() {
-  const container = document.getElementById("agenda-days");
-  let ticking = false;
-  container.addEventListener("scroll", () => {
-    if (ticking) return;
-    ticking = true;
-    requestAnimationFrame(() => {
-      updateStayBannerFromScroll();
-      ticking = false;
-    });
-  });
-}
-
-function updateStayBannerFromScroll() {
-  const container = document.getElementById("agenda-days");
-  const columns = Array.from(container.querySelectorAll(".agenda-day"));
-  if (!columns.length) return;
-  const scrollLeft = container.scrollLeft;
-  let current = columns[0];
-  for (const col of columns) {
-    if (col.offsetLeft - container.offsetLeft <= scrollLeft + 10) current = col;
-    else break;
+  for (const stay of activeStays) {
+    const entry = el("div", { class: "stay-banner-entry" });
+    entry.appendChild(el("span", { class: "stay-banner-pin", "aria-hidden": "true", text: "📍" }));
+    entry.appendChild(
+      stay.address
+        ? el("a", {
+            href: googleMapsDirectionsUrl(stay.address),
+            target: "_blank",
+            rel: "noopener noreferrer",
+            class: "stay-banner-link",
+            text: `${stay.name} — ${stay.address}`,
+            onclick: (e) => openGoogleMapsPreferringApp(e, "directions", stay.address),
+          })
+        : el("span", { class: "stay-banner-link", text: stay.name })
+    );
+    const dateLabel = formatDateRange(stay.start_date, stay.end_date);
+    if (dateLabel) entry.appendChild(el("span", { class: "stay-banner-dates", text: dateLabel }));
+    banner.appendChild(entry);
   }
-  renderStayBanner(current.dataset.day);
 }
 
 // --- init ---------------------------------------------------------------------
@@ -416,19 +396,18 @@ function updateStayBannerFromScroll() {
 function renderAgenda() {
   const container = document.getElementById("agenda-days");
   container.innerHTML = "";
+  renderStaySummary();
 
   if (!trip.start_date || !trip.end_date) {
     container.appendChild(
       el("p", { class: "empty-state", text: "Set both a start and end date on this trip (on the trip page) to see the day-by-day agenda." })
     );
-    renderStayBanner(null);
   } else {
     const days = dateRangeDays(trip.start_date, trip.end_date);
     for (const dayIso of days) container.appendChild(renderDayColumn(dayIso));
 
     const today = todayIso();
     const initialDay = today < days[0] ? days[0] : today > days[days.length - 1] ? days[days.length - 1] : today;
-    renderStayBanner(initialDay);
     const initialCol = container.querySelector(`[data-day="${initialDay}"]`);
     if (initialCol) container.scrollLeft = initialCol.offsetLeft - container.offsetLeft;
   }
@@ -452,7 +431,6 @@ async function init() {
     showMessage("No trip specified.", "error");
     return;
   }
-  initStayBannerScrollSync();
   try {
     await loadAgenda();
   } catch (err) {

@@ -227,7 +227,23 @@ function buildStayViewPane(card, stay) {
     },
   });
 
-  actions.append(deleteBtn, el("button", { type: "button", class: "secondary-btn edit-toggle-btn", text: "Edit" }));
+  const archiveBtn = el("button", {
+    type: "button",
+    class: "secondary-btn",
+    text: stay.archived ? "Unarchive" : "Archive",
+    onclick: async () => {
+      const updated = await fetchJSON(`${STAYS_API}/${stay.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ archived: !stay.archived }),
+      });
+      showMessage(updated.archived ? `Archived "${updated.name}".` : `Unarchived "${updated.name}".`, "success");
+      loadStays();
+      loadCoverage();
+    },
+  });
+
+  actions.append(deleteBtn, archiveBtn, el("button", { type: "button", class: "secondary-btn edit-toggle-btn", text: "Edit" }));
   pane.appendChild(actions);
   return pane;
 }
@@ -296,8 +312,8 @@ function buildStayEditPane(card, stay) {
         });
         showMessage(`Saved "${name}".`, "success");
         // Reload the whole list rather than patching this card in place -
-        // marking a stay booked can archive its siblings on this trip, and
-        // that side effect only shows up by re-fetching.
+        // simplest way to keep sort order (active-before-archived) and the
+        // coverage banner in sync with whatever changed.
         loadStays();
         loadCoverage();
       } catch (err) {
