@@ -29,28 +29,8 @@ async function fetchJSON(url, options) {
   return res.json();
 }
 
-function showMessage(text, kind) {
-  const el = document.getElementById("page-message");
-  if (!el) return;
-  el.textContent = text;
-  el.className = "page-message " + kind;
-  clearTimeout(showMessage._t);
-  showMessage._t = setTimeout(() => el.classList.add("hidden"), 4000);
-}
-
-function el(tag, attrs = {}, children = []) {
-  const node = document.createElement(tag);
-  for (const [key, value] of Object.entries(attrs)) {
-    if (key === "class") node.className = value;
-    else if (key === "text") node.textContent = value;
-    else if (key.startsWith("on") && typeof value === "function") node.addEventListener(key.slice(2), value);
-    else if (value !== null && value !== undefined) node.setAttribute(key, value);
-  }
-  for (const child of [].concat(children)) {
-    if (child) node.appendChild(typeof child === "string" ? document.createTextNode(child) : child);
-  }
-  return node;
-}
+// Theme.el() and Theme.showMessage() moved to https://static.evancooperman.com/theme.js
+// (window.Theme) - shared with every app rather than duplicated here.
 
 function toISODate(isoDateTime) {
   if (!isoDateTime) return "";
@@ -268,9 +248,9 @@ function wireViewEditToggle(viewPane, editPane) {
 // fields without a wall of individual `if` statements.
 function viewField(label, value) {
   if (!value) return null;
-  return el("div", { class: "view-field" }, [
-    el("div", { class: "view-field-label", text: label }),
-    el("div", { class: "view-field-value", text: value }),
+  return Theme.el("div", { class: "view-field" }, [
+    Theme.el("div", { class: "view-field-label", text: label }),
+    Theme.el("div", { class: "view-field-value", text: value }),
   ]);
 }
 

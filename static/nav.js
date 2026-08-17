@@ -2,7 +2,7 @@
 // <div id="app-nav-mount"></div> placeholder on every page - so a nav
 // change (adding the Refresh button, say) is one file to edit instead of
 // four. Mirrors icons.js's "single registry, applied at load" pattern.
-// Needs `el` (common.js) and `applyIcons` (icons.js) already loaded.
+// Needs Theme.el (theme.js) and applyIcons (icons.js) already loaded.
 
 function currentNavActive() {
   const path = window.location.pathname;
@@ -16,17 +16,17 @@ function renderAppNav() {
   if (!mount) return;
 
   const active = currentNavActive();
-  const nav = el("nav", { class: "app-nav" }, [
-    el("a", { href: "/", class: "app-nav-link" + (active === "trips" ? " active" : "") }, [
-      el("span", { class: "app-nav-icon", "data-icon": "compass", "aria-hidden": "true" }),
+  const nav = Theme.el("nav", { class: "app-nav" }, [
+    Theme.el("a", { href: "/", class: "app-nav-link" + (active === "trips" ? " active" : "") }, [
+      Theme.el("span", { class: "app-nav-icon", "data-icon": "compass", "aria-hidden": "true" }),
       "Trips",
     ]),
-    el("a", { href: "/activities.html", class: "app-nav-link" + (active === "activities" ? " active" : "") }, [
-      el("span", { class: "app-nav-icon", "data-icon": "list", "aria-hidden": "true" }),
+    Theme.el("a", { href: "/activities.html", class: "app-nav-link" + (active === "activities" ? " active" : "") }, [
+      Theme.el("span", { class: "app-nav-icon", "data-icon": "list", "aria-hidden": "true" }),
       "Activities",
     ]),
-    el("button", { type: "button", class: "app-nav-link", onclick: () => location.reload() }, [
-      el("span", { class: "app-nav-icon", "data-icon": "refresh", "aria-hidden": "true" }),
+    Theme.el("button", { type: "button", class: "app-nav-link", onclick: () => location.reload() }, [
+      Theme.el("span", { class: "app-nav-icon", "data-icon": "refresh", "aria-hidden": "true" }),
       "Refresh",
     ]),
   ]);

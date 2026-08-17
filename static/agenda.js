@@ -110,7 +110,7 @@ async function handleDrop(activityId, gap) {
   const available = minutesBetween(gap.start, gap.end);
 
   if (durationMinutes > available) {
-    showMessage(
+    Theme.showMessage(
       `"${activity.name}" needs ${formatDuration(durationMinutes)}, but only ${formatDuration(available)} is free there.`,
       "error"
     );
@@ -124,10 +124,10 @@ async function handleDrop(activityId, gap) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(placement),
     });
-    showMessage(`Scheduled "${activity.name}".`, "success");
+    Theme.showMessage(`Scheduled "${activity.name}".`, "success");
     await loadAgenda();
   } catch (err) {
-    showMessage(err.message, "error");
+    Theme.showMessage(err.message, "error");
   }
 }
 
@@ -140,10 +140,10 @@ async function handleUnschedule(activityId) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ scheduled_start: null, scheduled_end: null }),
     });
-    showMessage(`Unscheduled "${activity.name}".`, "success");
+    Theme.showMessage(`Unscheduled "${activity.name}".`, "success");
     await loadAgenda();
   } catch (err) {
-    showMessage(err.message, "error");
+    Theme.showMessage(err.message, "error");
   }
 }
 
@@ -246,29 +246,29 @@ function agendaEntryElement(activity) {
   // the whole entry is a pointerdown-based drag handle (see makeDraggable
   // below), and a nested control would fight that the same way it would
   // fight expand/collapse on the item-card summary.
-  const entry = el("div", { class: "agenda-entry" + (activity.done ? " done" : "") });
+  const entry = Theme.el("div", { class: "agenda-entry" + (activity.done ? " done" : "") });
 
   if (activity.scheduled_start) {
     entry.appendChild(
-      el("div", {
+      Theme.el("div", {
         class: "agenda-entry-time",
         text: `${formatTime(activity.scheduled_start)} – ${formatTime(activity.scheduled_end)}`,
       })
     );
   }
-  entry.appendChild(el("div", { class: "agenda-entry-name", text: activity.name }));
+  entry.appendChild(Theme.el("div", { class: "agenda-entry-name", text: activity.name }));
 
-  const badges = el("div", { class: "agenda-entry-badges" });
+  const badges = Theme.el("div", { class: "agenda-entry-badges" });
   const cost = formatCost(activity.cost);
-  if (cost) badges.appendChild(el("span", { class: "item-badge item-badge-cost", text: cost }));
+  if (cost) badges.appendChild(Theme.el("span", { class: "item-badge item-badge-cost", text: cost }));
   if (activity.confirmation_number) {
-    badges.appendChild(el("span", { class: "item-badge item-badge-muted", text: `# ${activity.confirmation_number}` }));
+    badges.appendChild(Theme.el("span", { class: "item-badge item-badge-muted", text: `# ${activity.confirmation_number}` }));
   }
   if (badges.children.length) entry.appendChild(badges);
 
-  const links = el("div", { class: "agenda-entry-links" });
-  if (activity.url) links.appendChild(el("a", { href: activity.url, target: "_blank", rel: "noopener noreferrer", class: "agenda-entry-link", text: "Open link →" }));
-  if (activity.map_link) links.appendChild(el("a", { href: activity.map_link, target: "_blank", rel: "noopener noreferrer", class: "agenda-entry-link", text: "Map →" }));
+  const links = Theme.el("div", { class: "agenda-entry-links" });
+  if (activity.url) links.appendChild(Theme.el("a", { href: activity.url, target: "_blank", rel: "noopener noreferrer", class: "agenda-entry-link", text: "Open link →" }));
+  if (activity.map_link) links.appendChild(Theme.el("a", { href: activity.map_link, target: "_blank", rel: "noopener noreferrer", class: "agenda-entry-link", text: "Map →" }));
 
   // Directions are always "from wherever you are right now" to this
   // activity's own location - the same link on every entry, scheduled or
@@ -279,7 +279,7 @@ function agendaEntryElement(activity) {
   // directions - no need to duplicate it on every entry too.
   const dest = locationQueryFor(activity);
   links.appendChild(
-    el("a", {
+    Theme.el("a", {
       href: googleMapsDirectionsUrl(dest),
       target: "_blank",
       rel: "noopener noreferrer",
@@ -297,14 +297,14 @@ function agendaEntryElement(activity) {
 
 function gapElement(gap) {
   const available = minutesBetween(gap.start, gap.end);
-  const gapEl = el("div", { class: "agenda-gap" });
+  const gapEl = Theme.el("div", { class: "agenda-gap" });
 
   if (available <= 0) {
     gapEl.classList.add("agenda-gap-none");
     return gapEl;
   }
 
-  gapEl.appendChild(el("span", { class: "agenda-gap-label", text: gapLabel(gap, available) }));
+  gapEl.appendChild(Theme.el("span", { class: "agenda-gap-label", text: gapLabel(gap, available) }));
   gapEl._gapData = gap;
   return gapEl;
 }
@@ -314,15 +314,15 @@ function renderDayColumn(dayIso) {
     .filter((a) => a.scheduled_start && toISODate(a.scheduled_start) === dayIso)
     .sort((a, b) => a.scheduled_start.localeCompare(b.scheduled_start));
 
-  const column = el("div", { class: "agenda-day", "data-day": dayIso });
+  const column = Theme.el("div", { class: "agenda-day", "data-day": dayIso });
 
-  const header = el("div", { class: "agenda-day-header" });
-  header.appendChild(el("div", { class: "agenda-day-date", text: formatDateBadge(`${dayIso}T00:00:00`) }));
+  const header = Theme.el("div", { class: "agenda-day-header" });
+  header.appendChild(Theme.el("div", { class: "agenda-day-date", text: formatDateBadge(`${dayIso}T00:00:00`) }));
   // Just the name here - the address/directions link lives once in the
   // stay summary above the day columns (see renderStaySummary) rather than
   // being repeated on every day.
   const stay = findStayForDay(dayIso);
-  if (stay) header.appendChild(el("div", { class: "agenda-day-stay", text: `📍 ${stay.name}` }));
+  if (stay) header.appendChild(Theme.el("div", { class: "agenda-day-stay", text: `📍 ${stay.name}` }));
   column.appendChild(header);
 
   const gaps = buildGapsForDay(dayIso, dayActivities);
@@ -371,11 +371,11 @@ function renderStaySummary() {
   banner.classList.remove("hidden");
 
   for (const stay of activeStays) {
-    const entry = el("div", { class: "stay-banner-entry" });
-    entry.appendChild(el("span", { class: "stay-banner-pin", "aria-hidden": "true", text: "📍" }));
+    const entry = Theme.el("div", { class: "stay-banner-entry" });
+    entry.appendChild(Theme.el("span", { class: "stay-banner-pin", "aria-hidden": "true", text: "📍" }));
     entry.appendChild(
       stay.address
-        ? el("a", {
+        ? Theme.el("a", {
             href: googleMapsDirectionsUrl(stay.address),
             target: "_blank",
             rel: "noopener noreferrer",
@@ -383,10 +383,10 @@ function renderStaySummary() {
             text: `${stay.name} — ${stay.address}`,
             onclick: (e) => openGoogleMapsPreferringApp(e, "directions", stay.address),
           })
-        : el("span", { class: "stay-banner-link", text: stay.name })
+        : Theme.el("span", { class: "stay-banner-link", text: stay.name })
     );
     const dateLabel = formatDateRange(stay.start_date, stay.end_date);
-    if (dateLabel) entry.appendChild(el("span", { class: "stay-banner-dates", text: dateLabel }));
+    if (dateLabel) entry.appendChild(Theme.el("span", { class: "stay-banner-dates", text: dateLabel }));
     banner.appendChild(entry);
   }
 }
@@ -400,7 +400,7 @@ function renderAgenda() {
 
   if (!trip.start_date || !trip.end_date) {
     container.appendChild(
-      el("p", { class: "empty-state", text: "Set both a start and end date on this trip (on the trip page) to see the day-by-day agenda." })
+      Theme.el("p", { class: "empty-state", text: "Set both a start and end date on this trip (on the trip page) to see the day-by-day agenda." })
     );
   } else {
     const days = dateRangeDays(trip.start_date, trip.end_date);
@@ -428,13 +428,13 @@ async function loadAgenda() {
 
 async function init() {
   if (!tripId) {
-    showMessage("No trip specified.", "error");
+    Theme.showMessage("No trip specified.", "error");
     return;
   }
   try {
     await loadAgenda();
   } catch (err) {
-    showMessage(err.message, "error");
+    Theme.showMessage(err.message, "error");
   }
 }
 

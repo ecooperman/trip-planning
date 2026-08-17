@@ -63,6 +63,6 @@ initAddActivityToggle(document.getElementById("add-activity-container"), {
   },
 });
 
-if (prefill) showMessage(`Filled in from ${prefill.url ? domainFromUrl(prefill.url) || "clipped page" : "clipped page"} - review and save.`, "success");
+if (prefill) Theme.showMessage(`Filled in from ${prefill.url ? domainFromUrl(prefill.url) || "clipped page" : "clipped page"} - review and save.`, "success");
 
-loadActivities().catch((err) => showMessage(err.message, "error"));
+loadActivities().catch((err) => Theme.showMessage(err.message, "error"));
