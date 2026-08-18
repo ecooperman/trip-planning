@@ -28,7 +28,7 @@ function refreshActivityCounts() {
 async function loadActivities() {
   const list = document.getElementById("activities-list");
   list.innerHTML = "";
-  const activities = await fetchJSON(ACTIVITIES_API);
+  const activities = await Global.fetchJSON(ACTIVITIES_API);
   for (const activity of activities) {
     list.appendChild(
       activityCardElement(activity, {
@@ -63,6 +63,6 @@ initAddActivityToggle(document.getElementById("add-activity-container"), {
   },
 });
 
-if (prefill) Theme.showMessage(`Filled in from ${prefill.url ? domainFromUrl(prefill.url) || "clipped page" : "clipped page"} - review and save.`, "success");
+if (prefill) Global.showMessage(`Filled in from ${prefill.url ? Global.domainFromUrl(prefill.url) || "clipped page" : "clipped page"} - review and save.`, "success");
 
-loadActivities().catch((err) => Theme.showMessage(err.message, "error"));
+loadActivities().catch((err) => Global.showMessage(err.message, "error"));

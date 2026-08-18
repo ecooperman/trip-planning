@@ -23,36 +23,36 @@ function renderTripHeader() {
 
   const viewPane = buildTripHeaderViewPane();
   const editPane = buildTripHeaderEditPane();
-  const header = Theme.el("div", { class: "trip-header" }, [viewPane, editPane]);
+  const header = Global.el("div", { class: "trip-header" }, [viewPane, editPane]);
   wireViewEditToggle(viewPane, editPane);
   container.appendChild(header);
   applyIcons(container);
 }
 
 function buildTripHeaderViewPane() {
-  const pane = Theme.el("div", { class: "view-pane" });
+  const pane = Global.el("div", { class: "view-pane" });
 
-  const top = Theme.el("div", { class: "trip-header-top" });
-  const badges = Theme.el("div", {});
-  if (currentTrip.archived) badges.appendChild(Theme.el("span", { class: "item-badge item-badge-archived", text: "Archived" }));
+  const top = Global.el("div", { class: "trip-header-top" });
+  const badges = Global.el("div", {});
+  if (currentTrip.archived) badges.appendChild(Global.el("span", { class: "item-badge item-badge-archived", text: "Archived" }));
   top.appendChild(badges);
 
-  const archiveBtn = Theme.el("button", {
+  const archiveBtn = Global.el("button", {
     type: "button",
     class: "secondary-btn",
     text: currentTrip.archived ? "Unarchive" : "Archive",
     onclick: async () => {
-      currentTrip = await fetchJSON(`${TRIPS_API}/${tripId}`, {
+      currentTrip = await Global.fetchJSON(`${TRIPS_API}/${tripId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ archived: !currentTrip.archived }),
       });
-      Theme.showMessage(currentTrip.archived ? "Trip archived." : "Trip unarchived.", "success");
+      Global.showMessage(currentTrip.archived ? "Trip archived." : "Trip unarchived.", "success");
       renderTripHeader();
     },
   });
 
-  const deleteBtn = Theme.el("button", {
+  const deleteBtn = Global.el("button", {
     type: "button",
     class: "danger-btn",
     text: "Delete trip",
@@ -62,73 +62,73 @@ function buildTripHeaderViewPane() {
     },
   });
 
-  const agendaLink = Theme.el("a", { href: `agenda.html?id=${tripId}`, class: "secondary-btn" }, [
-    Theme.el("span", { class: "btn-icon", "data-icon": "calendar", "aria-hidden": "true" }),
+  const agendaLink = Global.el("a", { href: `agenda.html?id=${tripId}`, class: "secondary-btn" }, [
+    Global.el("span", { class: "btn-icon", "data-icon": "calendar", "aria-hidden": "true" }),
     " Agenda",
   ]);
-  const editBtn = Theme.el("button", { type: "button", class: "secondary-btn edit-toggle-btn", text: "Edit" });
-  top.appendChild(Theme.el("div", { class: "trip-header-actions" }, [agendaLink, archiveBtn, editBtn, deleteBtn]));
+  const editBtn = Global.el("button", { type: "button", class: "secondary-btn edit-toggle-btn", text: "Edit" });
+  top.appendChild(Global.el("div", { class: "trip-header-actions" }, [agendaLink, archiveBtn, editBtn, deleteBtn]));
   pane.appendChild(top);
 
   const dateLabel = formatDateRange(currentTrip.start_date, currentTrip.end_date);
   const fields = [viewField("Location", currentTrip.location), viewField("Dates", dateLabel || "Not set")].filter(Boolean);
-  pane.appendChild(Theme.el("div", { class: "view-fields" }, fields));
+  pane.appendChild(Global.el("div", { class: "view-fields" }, fields));
 
   return pane;
 }
 
 function buildTripHeaderEditPane() {
-  const pane = Theme.el("div", { class: "edit-pane" });
+  const pane = Global.el("div", { class: "edit-pane" });
 
-  const locationInput = Theme.el("input", { type: "text", value: currentTrip.location, required: "required" });
-  const startInput = Theme.el("input", { type: "date", value: toISODate(currentTrip.start_date) });
-  const endInput = Theme.el("input", { type: "date", value: toISODate(currentTrip.end_date) });
+  const locationInput = Global.el("input", { type: "text", value: currentTrip.location, required: "required" });
+  const startInput = Global.el("input", { type: "date", value: Global.toISODate(currentTrip.start_date) });
+  const endInput = Global.el("input", { type: "date", value: Global.toISODate(currentTrip.end_date) });
 
   pane.appendChild(
-    Theme.el("div", { class: "item-fields" }, [
-      Theme.el("div", { class: "field" }, [Theme.el("label", { text: "Location" }), locationInput]),
-      Theme.el("div", { class: "field" }, [Theme.el("label", { text: "Start date" }), startInput]),
-      Theme.el("div", { class: "field" }, [Theme.el("label", { text: "End date" }), endInput]),
+    Global.el("div", { class: "item-fields" }, [
+      Global.el("div", { class: "field" }, [Global.el("label", { text: "Location" }), locationInput]),
+      Global.el("div", { class: "field" }, [Global.el("label", { text: "Start date" }), startInput]),
+      Global.el("div", { class: "field" }, [Global.el("label", { text: "End date" }), endInput]),
     ])
   );
 
-  const cancelBtn = Theme.el("button", {
+  const cancelBtn = Global.el("button", {
     type: "button",
     class: "cancel-btn cancel-edit-btn",
     text: "Cancel",
     onclick: () => renderTripHeader(),
   });
 
-  const saveBtn = Theme.el("button", {
+  const saveBtn = Global.el("button", {
     type: "button",
     class: "save-btn",
     text: "Save trip",
     onclick: async () => {
       const loc = locationInput.value.trim();
       if (!loc) {
-        Theme.showMessage("Location is required.", "error");
+        Global.showMessage("Location is required.", "error");
         return;
       }
       try {
-        currentTrip = await fetchJSON(`${TRIPS_API}/${tripId}`, {
+        currentTrip = await Global.fetchJSON(`${TRIPS_API}/${tripId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             location: loc,
-            start_date: dateInputToISO(startInput.value),
-            end_date: dateInputToISO(endInput.value),
+            start_date: Global.dateInputToISO(startInput.value),
+            end_date: Global.dateInputToISO(endInput.value),
           }),
         });
-        Theme.showMessage("Trip saved.", "success");
+        Global.showMessage("Trip saved.", "success");
         renderTripHeader();
         loadCoverage();
       } catch (err) {
-        Theme.showMessage(err.message, "error");
+        Global.showMessage(err.message, "error");
       }
     },
   });
 
-  pane.appendChild(Theme.el("div", { class: "item-actions" }, [cancelBtn, saveBtn]));
+  pane.appendChild(Global.el("div", { class: "item-actions" }, [cancelBtn, saveBtn]));
   return pane;
 }
 
@@ -137,37 +137,37 @@ function buildTripHeaderEditPane() {
 async function loadCoverage() {
   const container = document.getElementById("coverage-banner-container");
   container.innerHTML = "";
-  const coverage = await fetchJSON(`${TRIPS_API}/${tripId}/stay-coverage`);
+  const coverage = await Global.fetchJSON(`${TRIPS_API}/${tripId}/stay-coverage`);
   if (!coverage.has_dates) return;
 
   if (coverage.covered) {
-    container.appendChild(Theme.el("div", { class: "coverage-banner covered", text: "✓ Every day of this trip is covered by a stay." }));
+    container.appendChild(Global.el("div", { class: "coverage-banner covered", text: "✓ Every day of this trip is covered by a stay." }));
     return;
   }
 
-  const banner = Theme.el("div", { class: "coverage-banner missing" });
+  const banner = Global.el("div", { class: "coverage-banner missing" });
   const n = coverage.missing_dates.length;
   banner.appendChild(document.createTextNode(`⚠ ${n} day${n === 1 ? "" : "s"} not covered by any stay:`));
-  banner.appendChild(Theme.el("div", { class: "missing-dates", text: coverage.missing_dates.map(formatDateBadge).join(", ") }));
+  banner.appendChild(Global.el("div", { class: "missing-dates", text: coverage.missing_dates.map(formatDateBadge).join(", ") }));
   container.appendChild(banner);
 }
 
 // --- stays -------------------------------------------------------------------
 
 function stayCardElement(stay, { expanded = false } = {}) {
-  const card = Theme.el("div", { class: "item-card" + (expanded ? " expanded" : "") + (stay.archived ? " archived" : ""), "data-id": stay.id });
+  const card = Global.el("div", { class: "item-card" + (expanded ? " expanded" : "") + (stay.archived ? " archived" : ""), "data-id": stay.id });
 
-  const summary = Theme.el("button", { type: "button", class: "item-summary", "aria-expanded": String(expanded) });
-  summary.appendChild(Theme.el("span", { class: "item-summary-title", text: stay.name }));
+  const summary = Global.el("button", { type: "button", class: "item-summary", "aria-expanded": String(expanded) });
+  summary.appendChild(Global.el("span", { class: "item-summary-title", text: stay.name }));
 
   const dateLabel = formatDateRange(stay.start_date, stay.end_date);
-  if (dateLabel) summary.appendChild(Theme.el("span", { class: "item-badge item-badge-date", text: dateLabel }));
-  if (stay.booked) summary.appendChild(Theme.el("span", { class: "item-badge item-badge-booked", text: "Booked" }));
-  if (stay.archived) summary.appendChild(Theme.el("span", { class: "item-badge item-badge-archived", text: "Archived" }));
+  if (dateLabel) summary.appendChild(Global.el("span", { class: "item-badge item-badge-date", text: dateLabel }));
+  if (stay.booked) summary.appendChild(Global.el("span", { class: "item-badge item-badge-booked", text: "Booked" }));
+  if (stay.archived) summary.appendChild(Global.el("span", { class: "item-badge item-badge-archived", text: "Archived" }));
 
-  summary.appendChild(Theme.el("span", { class: "item-chevron", "aria-hidden": "true", text: "▸" }));
+  summary.appendChild(Global.el("span", { class: "item-chevron", "aria-hidden": "true", text: "▸" }));
 
-  const details = Theme.el("div", { class: "item-details" + (expanded ? "" : " hidden") });
+  const details = Global.el("div", { class: "item-details" + (expanded ? "" : " hidden") });
   summary.addEventListener("click", () => {
     const isExpanded = card.classList.toggle("expanded");
     details.classList.toggle("hidden", !isExpanded);
@@ -180,7 +180,7 @@ function stayCardElement(stay, { expanded = false } = {}) {
 }
 
 function buildStayViewEdit(card, stay) {
-  const wrap = Theme.el("div", { class: "item-details-inner" });
+  const wrap = Global.el("div", { class: "item-details-inner" });
   const viewPane = buildStayViewPane(card, stay);
   const editPane = buildStayEditPane(card, stay);
   wrap.append(viewPane, editPane);
@@ -189,16 +189,16 @@ function buildStayViewEdit(card, stay) {
 }
 
 function buildStayViewPane(card, stay) {
-  const pane = Theme.el("div", { class: "view-pane" });
+  const pane = Global.el("div", { class: "view-pane" });
 
   const fields = [viewField("Description", stay.description), viewField("Address", stay.address)].filter(Boolean);
-  if (fields.length) pane.appendChild(Theme.el("div", { class: "view-fields" }, fields));
+  if (fields.length) pane.appendChild(Global.el("div", { class: "view-fields" }, fields));
 
-  const links = Theme.el("div", { class: "view-links" });
-  if (stay.url) links.appendChild(Theme.el("a", { href: stay.url, target: "_blank", rel: "noopener noreferrer", class: "secondary-btn", text: "Visit website →" }));
+  const links = Global.el("div", { class: "view-links" });
+  if (stay.url) links.appendChild(Global.el("a", { href: stay.url, target: "_blank", rel: "noopener noreferrer", class: "secondary-btn", text: "Visit website →" }));
   if (stay.address) {
     links.appendChild(
-      Theme.el("a", {
+      Global.el("a", {
         href: googleMapsSearchUrl(stay.address),
         target: "_blank",
         rel: "noopener noreferrer",
@@ -212,92 +212,92 @@ function buildStayViewPane(card, stay) {
 
   if (stay.url) pane.appendChild(buildStayScrapeSection(stay));
 
-  const actions = Theme.el("div", { class: "item-actions" });
+  const actions = Global.el("div", { class: "item-actions" });
 
-  const deleteBtn = Theme.el("button", {
+  const deleteBtn = Global.el("button", {
     type: "button",
     class: "danger-btn",
     text: "Delete",
     onclick: async () => {
       if (!confirm(`Delete "${stay.name}"? This cannot be undone.`)) return;
-      await fetchJSON(`${STAYS_API}/${stay.id}`, { method: "DELETE" });
-      Theme.showMessage(`Deleted "${stay.name}".`, "success");
+      await Global.fetchJSON(`${STAYS_API}/${stay.id}`, { method: "DELETE" });
+      Global.showMessage(`Deleted "${stay.name}".`, "success");
       loadStays();
       loadCoverage();
     },
   });
 
-  const archiveBtn = Theme.el("button", {
+  const archiveBtn = Global.el("button", {
     type: "button",
     class: "secondary-btn",
     text: stay.archived ? "Unarchive" : "Archive",
     onclick: async () => {
-      const updated = await fetchJSON(`${STAYS_API}/${stay.id}`, {
+      const updated = await Global.fetchJSON(`${STAYS_API}/${stay.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ archived: !stay.archived }),
       });
-      Theme.showMessage(updated.archived ? `Archived "${updated.name}".` : `Unarchived "${updated.name}".`, "success");
+      Global.showMessage(updated.archived ? `Archived "${updated.name}".` : `Unarchived "${updated.name}".`, "success");
       loadStays();
       loadCoverage();
     },
   });
 
-  actions.append(deleteBtn, archiveBtn, Theme.el("button", { type: "button", class: "secondary-btn edit-toggle-btn", text: "Edit" }));
+  actions.append(deleteBtn, archiveBtn, Global.el("button", { type: "button", class: "secondary-btn edit-toggle-btn", text: "Edit" }));
   pane.appendChild(actions);
   return pane;
 }
 
 function buildStayEditPane(card, stay) {
-  const pane = Theme.el("div", { class: "edit-pane" });
+  const pane = Global.el("div", { class: "edit-pane" });
 
-  const nameInput = Theme.el("input", { type: "text", value: stay.name, required: "required" });
-  const descInput = Theme.el("textarea", { rows: "2" });
+  const nameInput = Global.el("input", { type: "text", value: stay.name, required: "required" });
+  const descInput = Global.el("textarea", { rows: "2" });
   descInput.value = stay.description || "";
-  const urlInput = Theme.el("input", { type: "url", value: stay.url || "" });
-  const addressInput = Theme.el("input", { type: "text", value: stay.address || "" });
-  const startInput = Theme.el("input", { type: "date", value: toISODate(stay.start_date), required: "required" });
-  const endInput = Theme.el("input", { type: "date", value: toISODate(stay.end_date), required: "required" });
-  const bookedInput = Theme.el("input", { type: "checkbox" });
+  const urlInput = Global.el("input", { type: "url", value: stay.url || "" });
+  const addressInput = Global.el("input", { type: "text", value: stay.address || "" });
+  const startInput = Global.el("input", { type: "date", value: Global.toISODate(stay.start_date), required: "required" });
+  const endInput = Global.el("input", { type: "date", value: Global.toISODate(stay.end_date), required: "required" });
+  const bookedInput = Global.el("input", { type: "checkbox" });
   bookedInput.checked = stay.booked;
 
   pane.append(
-    Theme.el("div", { class: "item-fields" }, [
-      Theme.el("div", { class: "field" }, [Theme.el("label", { text: "Name" }), nameInput]),
-      Theme.el("div", { class: "field" }, [Theme.el("label", { text: "Description" }), descInput]),
-      Theme.el("div", { class: "field" }, [Theme.el("label", { text: "URL" }), urlInput]),
-      Theme.el("div", { class: "field" }, [Theme.el("label", { text: "Address" }), addressInput]),
-      Theme.el("div", { class: "field" }, [Theme.el("label", { text: "Start date" }), startInput]),
-      Theme.el("div", { class: "field" }, [Theme.el("label", { text: "End date" }), endInput]),
+    Global.el("div", { class: "item-fields" }, [
+      Global.el("div", { class: "field" }, [Global.el("label", { text: "Name" }), nameInput]),
+      Global.el("div", { class: "field" }, [Global.el("label", { text: "Description" }), descInput]),
+      Global.el("div", { class: "field" }, [Global.el("label", { text: "URL" }), urlInput]),
+      Global.el("div", { class: "field" }, [Global.el("label", { text: "Address" }), addressInput]),
+      Global.el("div", { class: "field" }, [Global.el("label", { text: "Start date" }), startInput]),
+      Global.el("div", { class: "field" }, [Global.el("label", { text: "End date" }), endInput]),
     ]),
-    Theme.el("label", { class: "checkbox-label" }, [bookedInput, document.createTextNode("Booked (this is the confirmed option)")])
+    Global.el("label", { class: "checkbox-label" }, [bookedInput, document.createTextNode("Booked (this is the confirmed option)")])
   );
 
-  const actions = Theme.el("div", { class: "item-actions" });
+  const actions = Global.el("div", { class: "item-actions" });
 
-  const cancelBtn = Theme.el("button", {
+  const cancelBtn = Global.el("button", {
     type: "button",
     class: "cancel-btn cancel-edit-btn",
     text: "Cancel",
     onclick: () => card.replaceWith(stayCardElement(stay, { expanded: true })),
   });
 
-  const saveBtn = Theme.el("button", {
+  const saveBtn = Global.el("button", {
     type: "button",
     class: "save-btn",
     text: "Save",
     onclick: async () => {
       const name = nameInput.value.trim();
       if (!name) {
-        Theme.showMessage("Name is required.", "error");
+        Global.showMessage("Name is required.", "error");
         return;
       }
       if (!startInput.value || !endInput.value) {
-        Theme.showMessage("Start and end date are both required.", "error");
+        Global.showMessage("Start and end date are both required.", "error");
         return;
       }
       try {
-        await fetchJSON(`${STAYS_API}/${stay.id}`, {
+        await Global.fetchJSON(`${STAYS_API}/${stay.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -305,19 +305,19 @@ function buildStayEditPane(card, stay) {
             description: descInput.value.trim() || null,
             url: urlInput.value.trim() || null,
             address: addressInput.value.trim() || null,
-            start_date: dateInputToISO(startInput.value),
-            end_date: dateInputToISO(endInput.value),
+            start_date: Global.dateInputToISO(startInput.value),
+            end_date: Global.dateInputToISO(endInput.value),
             booked: bookedInput.checked,
           }),
         });
-        Theme.showMessage(`Saved "${name}".`, "success");
+        Global.showMessage(`Saved "${name}".`, "success");
         // Reload the whole list rather than patching this card in place -
         // simplest way to keep sort order (active-before-archived) and the
         // coverage banner in sync with whatever changed.
         loadStays();
         loadCoverage();
       } catch (err) {
-        Theme.showMessage(err.message, "error");
+        Global.showMessage(err.message, "error");
       }
     },
   });
@@ -328,8 +328,8 @@ function buildStayEditPane(card, stay) {
 }
 
 function buildStayScrapeSection(stay) {
-  const section = Theme.el("div", { class: "scrape-section" });
-  const scrapeBtn = Theme.el("button", {
+  const section = Global.el("div", { class: "scrape-section" });
+  const scrapeBtn = Global.el("button", {
     type: "button",
     class: "scrape-btn",
     text: stay.scrape_status === "not_started" ? "Fetch preview" : "Re-fetch preview",
@@ -337,12 +337,12 @@ function buildStayScrapeSection(stay) {
       e.target.disabled = true;
       e.target.textContent = "Fetching...";
       try {
-        await fetchJSON(`${STAYS_API}/${stay.id}/scrape`, { method: "POST" });
+        await Global.fetchJSON(`${STAYS_API}/${stay.id}/scrape`, { method: "POST" });
         loadStays();
       } catch (err) {
         e.target.disabled = false;
         e.target.textContent = "Fetch preview";
-        Theme.showMessage(`Preview fetch failed: ${err.message}`, "error");
+        Global.showMessage(`Preview fetch failed: ${err.message}`, "error");
       }
     },
   });
@@ -371,7 +371,7 @@ async function loadStays() {
   const archivedList = document.getElementById("archived-stays-list");
   activeList.innerHTML = "";
   archivedList.innerHTML = "";
-  const stays = await fetchJSON(`${TRIPS_API}/${tripId}/stays`);
+  const stays = await Global.fetchJSON(`${TRIPS_API}/${tripId}/stays`);
   for (const stay of stays) {
     (stay.archived ? archivedList : activeList).appendChild(stayCardElement(stay));
   }
@@ -380,30 +380,30 @@ async function loadStays() {
 
 function initAddStayForm() {
   const container = document.getElementById("add-stay-container");
-  const showBtn = Theme.el("button", { type: "button", class: "add-toggle", text: "+ Add Stay" });
+  const showBtn = Global.el("button", { type: "button", class: "add-toggle", text: "+ Add Stay" });
 
-  const nameInput = Theme.el("input", { type: "text", required: "required", placeholder: "e.g. Hotel Le Marais" });
-  const descInput = Theme.el("textarea", { rows: "2", placeholder: "Optional notes" });
-  const urlInput = Theme.el("input", { type: "url", placeholder: "https://airbnb.com/rooms/..." });
-  const addressInput = Theme.el("input", { type: "text", placeholder: "Optional" });
-  const startInput = Theme.el("input", { type: "date", required: "required" });
-  const endInput = Theme.el("input", { type: "date", required: "required" });
-  const bookedInput = Theme.el("input", { type: "checkbox" });
+  const nameInput = Global.el("input", { type: "text", required: "required", placeholder: "e.g. Hotel Le Marais" });
+  const descInput = Global.el("textarea", { rows: "2", placeholder: "Optional notes" });
+  const urlInput = Global.el("input", { type: "url", placeholder: "https://airbnb.com/rooms/..." });
+  const addressInput = Global.el("input", { type: "text", placeholder: "Optional" });
+  const startInput = Global.el("input", { type: "date", required: "required" });
+  const endInput = Global.el("input", { type: "date", required: "required" });
+  const bookedInput = Global.el("input", { type: "checkbox" });
 
-  const form = Theme.el("form", { class: "add-card hidden" }, [
-    Theme.el("div", { class: "field" }, [Theme.el("label", { text: "Name *" }), nameInput]),
-    Theme.el("div", { class: "field" }, [Theme.el("label", { text: "Description" }), descInput]),
-    Theme.el("div", { class: "field" }, [Theme.el("label", { text: "URL" }), urlInput]),
-    Theme.el("div", { class: "field" }, [Theme.el("label", { text: "Address" }), addressInput]),
-    Theme.el("div", { class: "field-row" }, [
-      Theme.el("div", { class: "field" }, [Theme.el("label", { text: "Start date *" }), startInput]),
-      Theme.el("div", { class: "field" }, [Theme.el("label", { text: "End date *" }), endInput]),
+  const form = Global.el("form", { class: "add-card hidden" }, [
+    Global.el("div", { class: "field" }, [Global.el("label", { text: "Name *" }), nameInput]),
+    Global.el("div", { class: "field" }, [Global.el("label", { text: "Description" }), descInput]),
+    Global.el("div", { class: "field" }, [Global.el("label", { text: "URL" }), urlInput]),
+    Global.el("div", { class: "field" }, [Global.el("label", { text: "Address" }), addressInput]),
+    Global.el("div", { class: "field-row" }, [
+      Global.el("div", { class: "field" }, [Global.el("label", { text: "Start date *" }), startInput]),
+      Global.el("div", { class: "field" }, [Global.el("label", { text: "End date *" }), endInput]),
     ]),
-    Theme.el("label", { class: "checkbox-label" }, [bookedInput, document.createTextNode("Booked")]),
-    Theme.el("div", { class: "item-actions" }),
+    Global.el("label", { class: "checkbox-label" }, [bookedInput, document.createTextNode("Booked")]),
+    Global.el("div", { class: "item-actions" }),
   ]);
 
-  const cancelBtn = Theme.el("button", {
+  const cancelBtn = Global.el("button", {
     type: "button",
     class: "cancel-btn",
     text: "Cancel",
@@ -413,7 +413,7 @@ function initAddStayForm() {
       showBtn.classList.remove("hidden");
     },
   });
-  const submitBtn = Theme.el("button", { type: "submit", class: "save-btn", text: "Add stay" });
+  const submitBtn = Global.el("button", { type: "submit", class: "save-btn", text: "Add stay" });
   form.querySelector(".item-actions").append(cancelBtn, submitBtn);
 
   showBtn.addEventListener("click", () => {
@@ -427,11 +427,11 @@ function initAddStayForm() {
     const name = nameInput.value.trim();
     if (!name) return;
     if (!startInput.value || !endInput.value) {
-      Theme.showMessage("Start and end date are both required.", "error");
+      Global.showMessage("Start and end date are both required.", "error");
       return;
     }
     try {
-      await fetchJSON(STAYS_API, {
+      await Global.fetchJSON(STAYS_API, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -439,8 +439,8 @@ function initAddStayForm() {
           description: descInput.value.trim() || null,
           url: urlInput.value.trim() || null,
           address: addressInput.value.trim() || null,
-          start_date: dateInputToISO(startInput.value),
-          end_date: dateInputToISO(endInput.value),
+          start_date: Global.dateInputToISO(startInput.value),
+          end_date: Global.dateInputToISO(endInput.value),
           booked: bookedInput.checked,
           trip_id: tripId,
         }),
@@ -448,11 +448,11 @@ function initAddStayForm() {
       form.reset();
       form.classList.add("hidden");
       showBtn.classList.remove("hidden");
-      Theme.showMessage(`Added "${name}".`, "success");
+      Global.showMessage(`Added "${name}".`, "success");
       loadStays();
       loadCoverage();
     } catch (err) {
-      Theme.showMessage(err.message, "error");
+      Global.showMessage(err.message, "error");
     }
   });
 
@@ -468,8 +468,8 @@ function refreshActivityCounts() {
 }
 
 async function unlinkActivity(activity) {
-  await fetchJSON(`${TRIPS_API}/${tripId}/activities/${activity.id}`, { method: "DELETE" });
-  Theme.showMessage(`Removed "${activity.name}" from this trip.`, "success");
+  await Global.fetchJSON(`${TRIPS_API}/${tripId}/activities/${activity.id}`, { method: "DELETE" });
+  Global.showMessage(`Removed "${activity.name}" from this trip.`, "success");
   loadActivities();
   loadUnassociatedOptions();
 }
@@ -477,7 +477,7 @@ async function unlinkActivity(activity) {
 async function loadActivities() {
   const list = document.getElementById("activities-list");
   list.innerHTML = "";
-  const activities = await fetchJSON(`${TRIPS_API}/${tripId}/activities`);
+  const activities = await Global.fetchJSON(`${TRIPS_API}/${tripId}/activities`);
   for (const activity of activities) {
     list.appendChild(
       activityCardElement(activity, {
@@ -493,32 +493,32 @@ async function loadActivities() {
 }
 
 async function loadUnassociatedOptions() {
-  const activities = await fetchJSON(`${ACTIVITIES_API}?unassociated=true`);
+  const activities = await Global.fetchJSON(`${ACTIVITIES_API}?unassociated=true`);
   unassociatedSelect.innerHTML = "";
   if (activities.length === 0) {
-    unassociatedSelect.appendChild(Theme.el("option", { value: "", text: "No unassociated activities" }));
+    unassociatedSelect.appendChild(Global.el("option", { value: "", text: "No unassociated activities" }));
     unassociatedSelect.disabled = true;
   } else {
     unassociatedSelect.disabled = false;
-    unassociatedSelect.appendChild(Theme.el("option", { value: "", text: "Attach an existing activity..." }));
+    unassociatedSelect.appendChild(Global.el("option", { value: "", text: "Attach an existing activity..." }));
     for (const activity of activities) {
-      unassociatedSelect.appendChild(Theme.el("option", { value: String(activity.id), text: activity.name }));
+      unassociatedSelect.appendChild(Global.el("option", { value: String(activity.id), text: activity.name }));
     }
   }
 }
 
 function initAttachActivityPicker() {
   const container = document.getElementById("attach-activity-container");
-  unassociatedSelect = Theme.el("select", {});
-  const attachBtn = Theme.el("button", {
+  unassociatedSelect = Global.el("select", {});
+  const attachBtn = Global.el("button", {
     type: "button",
     class: "secondary-btn",
     text: "Attach",
     onclick: async () => {
       const activityId = unassociatedSelect.value;
       if (!activityId) return;
-      await fetchJSON(`${TRIPS_API}/${tripId}/activities/${activityId}`, { method: "POST" });
-      Theme.showMessage("Activity attached to trip.", "success");
+      await Global.fetchJSON(`${TRIPS_API}/${tripId}/activities/${activityId}`, { method: "POST" });
+      Global.showMessage("Activity attached to trip.", "success");
       loadActivities();
       loadUnassociatedOptions();
     },
@@ -531,13 +531,13 @@ function initAttachActivityPicker() {
 
 async function init() {
   if (!tripId) {
-    Theme.showMessage("No trip specified.", "error");
+    Global.showMessage("No trip specified.", "error");
     return;
   }
   try {
-    currentTrip = await fetchJSON(`${TRIPS_API}/${tripId}`);
+    currentTrip = await Global.fetchJSON(`${TRIPS_API}/${tripId}`);
   } catch (err) {
-    Theme.showMessage(err.message, "error");
+    Global.showMessage(err.message, "error");
     return;
   }
 

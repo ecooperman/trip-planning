@@ -5,47 +5,11 @@
 const API_BASE = "/api";
 const TRIPS_API = `${API_BASE}/trips`;
 
-async function fetchJSON(url, options) {
-  const res = await fetch(url, options);
-  if (!res.ok) {
-    let detail = `${url} -> ${res.status}`;
-    try {
-      const body = await res.json();
-      if (Array.isArray(body.detail)) {
-        // FastAPI/Pydantic 422 validation errors: detail is a list of
-        // {loc, msg, ...} objects, not a string - join their messages so
-        // the user sees the actual validation complaint instead of
-        // "[object Object]".
-        detail = body.detail.map((e) => e.msg || JSON.stringify(e)).join("; ");
-      } else if (body.detail) {
-        detail = body.detail;
-      }
-    } catch (e) {
-      // ignore, use default detail
-    }
-    throw new Error(detail);
-  }
-  if (res.status === 204) return null;
-  return res.json();
-}
-
-// Theme.el() and Theme.showMessage() moved to https://static.evancooperman.com/theme.js
-// (window.Theme) - shared with every app rather than duplicated here.
-
-function toISODate(isoDateTime) {
-  if (!isoDateTime) return "";
-  return isoDateTime.slice(0, 10);
-}
-
-function dateInputToISO(value) {
-  return value ? `${value}T00:00:00` : null;
-}
-
-function formatDateBadge(isoDateTime) {
-  if (!isoDateTime) return null;
-  const [y, m, d] = isoDateTime.slice(0, 10).split("-").map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString(undefined, { month: "short", day: "numeric" });
-}
+// fetchJSON/el/showMessage/domainFromUrl/toISODate/dateInputToISO/
+// formatDateBadge all moved to https://static.evancooperman.com/theme.js
+// (window.Global) - shared with every app rather than duplicated here.
+// Everything below is trip-planning-specific: time-of-day-aware datetime
+// helpers, Google Maps deep-linking, and the view/edit toggle pattern.
 
 // --- datetime (date + time-of-day) helpers, for Activity.scheduled_start/
 // scheduled_end. Our stored datetimes are naive (no timezone) - they mean
@@ -96,17 +60,17 @@ function formatTime(isoDateTime) {
 
 function formatScheduleBadge(startIso, endIso) {
   if (!startIso) return null;
-  const dateLabel = formatDateBadge(startIso);
+  const dateLabel = Global.formatDateBadge(startIso);
   const startTime = formatTime(startIso);
   if (!endIso) return `${dateLabel}, ${startTime}`;
-  const sameDay = toISODate(startIso) === toISODate(endIso);
+  const sameDay = Global.toISODate(startIso) === Global.toISODate(endIso);
   const endTime = formatTime(endIso);
-  return sameDay ? `${dateLabel}, ${startTime}–${endTime}` : `${dateLabel} ${startTime} – ${formatDateBadge(endIso)} ${endTime}`;
+  return sameDay ? `${dateLabel}, ${startTime}–${endTime}` : `${dateLabel} ${startTime} – ${Global.formatDateBadge(endIso)} ${endTime}`;
 }
 
 function formatDateRange(startIso, endIso) {
-  const start = formatDateBadge(startIso);
-  const end = formatDateBadge(endIso);
+  const start = Global.formatDateBadge(startIso);
+  const end = Global.formatDateBadge(endIso);
   if (start && end) return start === end ? start : `${start} - ${end}`;
   return start || end || null;
 }
@@ -124,16 +88,8 @@ function formatCost(cost) {
   return `$${cost.toLocaleString()}`;
 }
 
-function domainFromUrl(url) {
-  try {
-    return new URL(url).hostname.replace(/^www\./, "");
-  } catch (e) {
-    return null;
-  }
-}
-
 function isYelpUrl(url) {
-  const domain = domainFromUrl(url);
+  const domain = Global.domainFromUrl(url);
   return domain === "yelp.com" || (domain !== null && domain.endsWith(".yelp.com"));
 }
 
@@ -248,9 +204,9 @@ function wireViewEditToggle(viewPane, editPane) {
 // fields without a wall of individual `if` statements.
 function viewField(label, value) {
   if (!value) return null;
-  return Theme.el("div", { class: "view-field" }, [
-    Theme.el("div", { class: "view-field-label", text: label }),
-    Theme.el("div", { class: "view-field-value", text: value }),
+  return Global.el("div", { class: "view-field" }, [
+    Global.el("div", { class: "view-field-label", text: label }),
+    Global.el("div", { class: "view-field-value", text: value }),
   ]);
 }
 
@@ -260,7 +216,7 @@ function viewField(label, value) {
 // wanted (e.g. a trip created by mistake, where the "activities" are junk
 // too).
 async function confirmAndDeleteTrip(trip) {
-  const activities = await fetchJSON(`${API_BASE}/trips/${trip.id}/activities`);
+  const activities = await Global.fetchJSON(`${API_BASE}/trips/${trip.id}/activities`);
   if (!confirm(`Delete trip "${trip.location}"? This cannot be undone.`)) return false;
 
   let deleteActivities = false;
@@ -272,6 +228,6 @@ async function confirmAndDeleteTrip(trip) {
     );
   }
 
-  await fetchJSON(`${API_BASE}/trips/${trip.id}?delete_activities=${deleteActivities}`, { method: "DELETE" });
+  await Global.fetchJSON(`${API_BASE}/trips/${trip.id}?delete_activities=${deleteActivities}`, { method: "DELETE" });
   return true;
 }
