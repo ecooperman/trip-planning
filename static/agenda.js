@@ -152,6 +152,17 @@ async function handleDrop(activityId, slot) {
   }
 
   const placement = { scheduled_start: slot.start, scheduled_end: addMinutesISO(slot.start, durationMinutes) };
+
+  // A drag's drop point is an easy thing to fat-finger (wrong day, wrong
+  // slot by one) - confirm the actual before/after before it's real,
+  // rather than only finding out from the day column afterward.
+  const newLabel = formatScheduleBadge(placement.scheduled_start, placement.scheduled_end);
+  const wasScheduled = !!activity.scheduled_start;
+  const confirmMessage = wasScheduled
+    ? `Move "${activity.name}"?\n\nFrom: ${formatScheduleBadge(activity.scheduled_start, activity.scheduled_end)}\nTo: ${newLabel}`
+    : `Schedule "${activity.name}" for:\n\n${newLabel}?`;
+  if (!confirm(confirmMessage)) return;
+
   try {
     await Global.fetchJSON(`${ACTIVITIES_API}/${activity.id}`, {
       method: "PATCH",
@@ -168,6 +179,10 @@ async function handleDrop(activityId, slot) {
 async function handleUnschedule(activityId) {
   const activity = activities.find((a) => a.id === activityId);
   if (!activity || !activity.scheduled_start) return;
+
+  const currentLabel = formatScheduleBadge(activity.scheduled_start, activity.scheduled_end);
+  if (!confirm(`Unschedule "${activity.name}"?\n\nCurrently: ${currentLabel}`)) return;
+
   try {
     await Global.fetchJSON(`${ACTIVITIES_API}/${activity.id}`, {
       method: "PATCH",
@@ -342,23 +357,92 @@ function makeDraggable(entryEl, activity) {
   });
 }
 
+// --- duration resize (+/- 30m, no drag-and-drop involved) --------------------
+//
+// A lighter alternative to a real drag-to-resize calendar block (which
+// would need entries laid out as a proportional-height time grid instead
+// of the plain stacked cards they are today) - two buttons that nudge
+// scheduled_end by SLOT_MINUTES, keeping scheduled_start fixed. Bounded by
+// whatever's immediately after it that day (or midnight if nothing is),
+// and by a SLOT_MINUTES floor so it can't be shrunk to nothing.
+
+async function adjustDuration(activity, nextActivity, deltaMinutes) {
+  const currentDuration = minutesBetween(activity.scheduled_start, activity.scheduled_end);
+  const newDuration = currentDuration + deltaMinutes;
+  if (newDuration < SLOT_MINUTES) {
+    Global.showMessage(`"${activity.name}" can't be shorter than ${formatDuration(SLOT_MINUTES)}.`, "error");
+    return;
+  }
+
+  const newEnd = addMinutesISO(activity.scheduled_start, newDuration);
+  const maxEnd = nextActivity ? nextActivity.scheduled_start : `${nextDayIso(Global.toISODate(activity.scheduled_start))}T00:00:00`;
+  if (minutesBetween(newEnd, maxEnd) < 0) {
+    const reason = nextActivity ? `"${nextActivity.name}" starts then` : "the day ends then";
+    Global.showMessage(`"${activity.name}" can't extend past ${formatTime(maxEnd)} - ${reason}.`, "error");
+    return;
+  }
+
+  const oldLabel = formatScheduleBadge(activity.scheduled_start, activity.scheduled_end);
+  const newLabel = formatScheduleBadge(activity.scheduled_start, newEnd);
+  if (!confirm(`Change "${activity.name}"?\n\nFrom: ${oldLabel}\nTo: ${newLabel}`)) return;
+
+  try {
+    await Global.fetchJSON(`${ACTIVITIES_API}/${activity.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scheduled_end: newEnd }),
+    });
+    Global.showMessage(`Updated "${activity.name}".`, "success");
+    await loadAgenda();
+  } catch (err) {
+    Global.showMessage(err.message, "error");
+  }
+}
+
+function buildResizeControls(activity, nextActivity) {
+  const wrap = Global.el("div", { class: "agenda-entry-resize" });
+  for (const [label, delta] of [["−30m", -SLOT_MINUTES], ["+30m", SLOT_MINUTES]]) {
+    const btn = Global.el("button", {
+      type: "button",
+      class: "agenda-entry-resize-btn",
+      text: label,
+      "aria-label": `${delta > 0 ? "Extend" : "Shorten"} "${activity.name}" by 30 minutes`,
+    });
+    // Stops this from also starting a whole-entry reschedule drag (see
+    // makeDraggable's pointerdown listener on the entry itself).
+    btn.addEventListener("pointerdown", (e) => e.stopPropagation());
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      adjustDuration(activity, nextActivity, delta);
+    });
+    wrap.appendChild(btn);
+  }
+  return wrap;
+}
+
 // --- rendering -----------------------------------------------------------------
 
-function agendaEntryElement(activity) {
+// nextActivity (same-day, immediately after this one - only passed for
+// scheduled entries in a day column, see renderDayColumn) bounds how far
+// the +30m resize button is allowed to extend this activity's end time.
+function agendaEntryElement(activity, { nextActivity = null } = {}) {
   // Reflects (doesn't toggle) done state - marking done happens on the
-  // activity's own card on trip.html/activities.html. No checkbox here:
-  // the whole entry is a pointerdown-based drag handle (see makeDraggable
-  // below), and a nested control would fight that the same way it would
-  // fight expand/collapse on the item-card summary.
+  // activity's own card on trip.html/activities.html. The whole entry is
+  // still a pointerdown-based drag handle (see makeDraggable below), so
+  // any nested control (the resize buttons below) has to stopPropagation
+  // on its own pointerdown or it'd also start a drag.
   const entry = Global.el("div", { class: "agenda-entry" + (activity.done ? " done" : "") });
 
   if (activity.scheduled_start) {
-    entry.appendChild(
-      Global.el("div", {
+    const timeRow = Global.el("div", { class: "agenda-entry-time-row" });
+    timeRow.appendChild(
+      Global.el("span", {
         class: "agenda-entry-time",
         text: `${formatTime(activity.scheduled_start)} – ${formatTime(activity.scheduled_end)}`,
       })
     );
+    timeRow.appendChild(buildResizeControls(activity, nextActivity));
+    entry.appendChild(timeRow);
   }
   entry.appendChild(Global.el("div", { class: "agenda-entry-name", text: activity.name }));
 
@@ -442,7 +526,7 @@ function renderDayColumn(dayIso, { excludeActivityId = null } = {}) {
   gaps.forEach((gap, i) => {
     for (const slot of buildSlotsForGap(gap)) body.appendChild(slotElement(slot));
     const activity = dayActivities[i];
-    if (activity) body.appendChild(agendaEntryElement(activity));
+    if (activity) body.appendChild(agendaEntryElement(activity, { nextActivity: dayActivities[i + 1] || null }));
   });
   column.appendChild(body);
 

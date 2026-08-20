@@ -475,10 +475,46 @@ body.agenda-locked .agenda-slot {
   cursor: grabbing;
 }
 
+.agenda-entry-time-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
 .agenda-entry-time {
   font-size: 11px;
   font-weight: 700;
   color: var(--accent);
+}
+
+/* +30m/-30m duration nudges (see adjustDuration in agenda.js) - a lighter
+   stand-in for dragging a calendar block's edge. Hidden while locked,
+   same as the slots, so nothing on the agenda can change a time without
+   deliberately unlocking first. */
+.agenda-entry-resize {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.agenda-entry-resize-btn {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--muted-bg);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.agenda-entry-resize-btn:hover {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+body.agenda-locked .agenda-entry-resize {
+  display: none;
 }
 
 .agenda-entry-name {
