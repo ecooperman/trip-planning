@@ -184,6 +184,18 @@
   padding: 0 12px 12px;
 }
 
+/* Focus lands on the <details> itself when you click its summary, and the
+   browser default outline traces the whole box (summary + content), not
+   just the summary row - jarring against the rounded card. Keep a focus
+   indicator (this is a real keyboard-operable toggle) but make it a
+   subtle ring instead. */
+.archived-section:focus-visible,
+.archived-section summary:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent);
+  border-radius: 10px;
+}
+
 /* --- stay-coverage banner on the trip page --- */
 
 .coverage-banner {
@@ -645,11 +657,24 @@ body.agenda-locked .agenda-entry-resize {
    activity-shared.js's buildCategorySelect and the .has-category card
    accent above. --- */
 
+/* Manage-categories doesn't reuse .item-list (its rows aren't item-cards),
+   so it needs its own copy of the side/bottom padding .archived-section
+   .item-list normally provides - otherwise rows and the empty-state note
+   sit flush against the box edges. */
+#categories-section {
+  margin-bottom: 24px;
+}
+
 .category-rows {
   display: flex;
   flex-direction: column;
   gap: 8px;
   margin-top: 12px;
+  padding: 0 16px;
+}
+
+.category-rows .note {
+  margin: 0;
 }
 
 .category-row {
@@ -683,7 +708,7 @@ body.agenda-locked .agenda-entry-resize {
   align-items: center;
   gap: 8px;
   margin-top: 12px;
-  padding-top: 12px;
+  padding: 12px 16px 16px;
   border-top: 1px solid var(--border);
 }
 

@@ -11,3 +11,10 @@ PORT = 8060
 # hand-editing a URL and remembering to revert it.
 ENV = os.environ.get("APP_ENV", "local")
 SHARED_ASSETS_BASE = "https://static.evancooperman.com" if ENV == "production" else "http://127.0.0.1:8070"
+
+# Used by app/ai_extraction.py to turn an Instagram caption into candidate
+# activities. Never committed - set directly in the local shell for dev, and
+# on the droplet via `sudo systemctl edit trip-planning` (same pattern as
+# resume-admin's INTERNAL_API_TOKEN, see DEPLOYMENT.md). Import-from-
+# Instagram fails with a clear 503 (not a silent no-op) if this is unset.
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")

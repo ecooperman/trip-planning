@@ -67,6 +67,35 @@ class Category(CategoryBase):
 
 
 # ---------------------------------------------------------------------------
+# Instagram import
+# ---------------------------------------------------------------------------
+
+
+class InstagramPost(BaseModel):
+    """One saved post as scraped from a collection's grid page (see the
+    trip-clipper extension) - just what's passively present in the page
+    the human is already looking at, no extra navigation."""
+
+    permalink: str
+    caption: str
+    thumbnail_url: Optional[str] = None
+
+
+class InstagramImportRequest(BaseModel):
+    posts: List[InstagramPost]
+    # Optional - omit to create unassociated activities, same as any other
+    # creation path (see ActivityCreate.trip_id).
+    trip_id: Optional[int] = None
+
+
+class InstagramImportResult(BaseModel):
+    posts_processed: int
+    posts_skipped: int
+    activities_created: int
+    created_names: List[str]
+
+
+# ---------------------------------------------------------------------------
 # Trips
 # ---------------------------------------------------------------------------
 
