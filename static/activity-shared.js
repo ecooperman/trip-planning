@@ -12,7 +12,7 @@
 const ACTIVITIES_API = `${API_BASE}/activities`;
 
 function activityCardElement(activity, opts = {}) {
-  const { expanded = false, showTripBadge = false, onChanged, onDeleted, onUnlink } = opts;
+  const { expanded = false, showTripBadge = false, onChanged, onDeleted, onUnlink, startInEdit = false } = opts;
   const card = Global.el("div", { class: "item-card" + (expanded ? " expanded" : "") + (activity.done ? " done" : ""), "data-id": activity.id });
 
   // A <div role="button"> rather than a real <button> - the done checkbox
@@ -94,7 +94,7 @@ function activityCardElement(activity, opts = {}) {
   });
 
   card.append(summary, details);
-  details.appendChild(buildActivityViewEdit(card, activity, { onChanged, onDeleted, onUnlink, showTripBadge }));
+  details.appendChild(buildActivityViewEdit(card, activity, { onChanged, onDeleted, onUnlink, showTripBadge, startInEdit }));
   applyIcons(card);
   return card;
 }
@@ -105,6 +105,14 @@ function buildActivityViewEdit(card, activity, opts) {
   const editPane = buildActivityEditPane(card, activity, opts);
   wrap.append(viewPane, editPane);
   wireViewEditToggle(viewPane, editPane);
+  // Lands straight in the edit form rather than the view pane - used by
+  // the "Edit" link on agenda.html's entries (see activities.js's
+  // ?edit=<id> handling), so you don't have to expand then click Edit
+  // yourself after following the link.
+  if (opts.startInEdit) {
+    viewPane.classList.add("hidden");
+    editPane.classList.remove("hidden");
+  }
   return wrap;
 }
 

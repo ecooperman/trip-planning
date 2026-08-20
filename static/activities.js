@@ -29,25 +29,35 @@ async function loadActivities() {
   const list = document.getElementById("activities-list");
   list.innerHTML = "";
   const activities = await Global.fetchJSON(ACTIVITIES_API);
+  let editTarget = null;
   for (const activity of activities) {
-    list.appendChild(
-      activityCardElement(activity, {
-        showTripBadge: true,
-        onDeleted: refreshActivityCounts,
-      })
-    );
+    // ?edit=<id> (see the "Edit" link on agenda.html's entries) lands
+    // here with that one activity already expanded and in edit mode,
+    // instead of you having to find and expand it yourself.
+    const card = activityCardElement(activity, {
+      showTripBadge: true,
+      onDeleted: refreshActivityCounts,
+      expanded: activity.id === editActivityId,
+      startInEdit: activity.id === editActivityId,
+    });
+    list.appendChild(card);
+    if (activity.id === editActivityId) editTarget = card;
   }
   refreshActivityCounts();
+  if (editTarget) editTarget.scrollIntoView({ block: "center" });
 }
 
 const pageParams = new URLSearchParams(window.location.search);
 const prefillParam = pageParams.get("prefill");
 const prefill = prefillParam ? decodeBase64UrlPrefill(prefillParam) : null;
-if (prefillParam) {
-  // Drop it from the URL so refreshing the page doesn't re-open the form
-  // with the same (possibly now-stale) data again.
+const editIdParam = pageParams.get("edit");
+const editActivityId = editIdParam ? Number(editIdParam) : null;
+if (prefillParam || editIdParam) {
+  // Drop these from the URL so refreshing the page doesn't re-open the
+  // form (with possibly now-stale prefill data) or re-jump-to-edit again.
   const url = new URL(window.location.href);
   url.searchParams.delete("prefill");
+  url.searchParams.delete("edit");
   window.history.replaceState({}, "", url);
 }
 

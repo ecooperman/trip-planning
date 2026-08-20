@@ -476,6 +476,14 @@ function agendaEntryElement(activity, { nextActivity = null } = {}) {
     })
   );
 
+  // Full editing (name/address/cost/notes/...) still only happens on
+  // activities.html - this just gets you there already on the right
+  // activity. ?edit=<id> (read in activities.js) lands with that one
+  // card expanded and straight in its edit form, not just scrolled to.
+  // A plain link, not gated by the lock - it doesn't touch the schedule
+  // at all, so there's nothing for the lock to protect here.
+  links.appendChild(Global.el("a", { href: `activities.html?edit=${activity.id}`, class: "agenda-entry-link", text: "Edit →" }));
+
   if (links.children.length) entry.appendChild(links);
 
   makeDraggable(entry, activity);
