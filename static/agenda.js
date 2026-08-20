@@ -22,6 +22,36 @@ let trip = null;
 let activities = [];
 let stays = [];
 
+// --- lock toggle -----------------------------------------------------------
+//
+// Locked by default on every page load (not persisted - reloading always
+// starts locked again) so that just browsing the agenda on a phone can't
+// accidentally reschedule something with a stray touch-drag. The lock
+// gates drag-and-drop at the source (see makeDraggable's pointerdown
+// handler below) - a body class drives the CSS-only side (dashed slot
+// borders, grab cursor) so the calendar visually stops looking
+// interactive too, not just stops behaving that way.
+let agendaLocked = true;
+
+function updateLockUI() {
+  document.body.classList.toggle("agenda-locked", agendaLocked);
+  const btn = document.getElementById("lock-toggle");
+  btn.classList.toggle("agenda-lock-btn-unlocked", !agendaLocked);
+  btn.setAttribute("aria-pressed", String(!agendaLocked));
+  btn.innerHTML = "";
+  btn.appendChild(Global.el("span", { class: "btn-icon", "data-icon": agendaLocked ? "lock" : "unlock", "aria-hidden": "true" }));
+  btn.appendChild(document.createTextNode(agendaLocked ? " Locked" : " Unlocked"));
+  applyIcons(btn);
+}
+
+function initLockToggle() {
+  document.getElementById("lock-toggle").addEventListener("click", () => {
+    agendaLocked = !agendaLocked;
+    updateLockUI();
+  });
+  updateLockUI();
+}
+
 // --- date helpers specific to this page ------------------------------------
 
 function nextDayIso(dayIso) {
@@ -169,6 +199,7 @@ const AUTO_SCROLL_SPEED_PX = 10;
 // input never dispatches.
 function makeDraggable(entryEl, activity) {
   entryEl.addEventListener("pointerdown", (startEvent) => {
+    if (agendaLocked) return;
     if (startEvent.button !== undefined && startEvent.button !== 0) return;
     const pointerId = startEvent.pointerId;
     const startX = startEvent.clientX;
@@ -511,6 +542,7 @@ async function loadAgenda() {
 }
 
 async function init() {
+  initLockToggle();
   if (!tripId) {
     Global.showMessage("No trip specified.", "error");
     return;

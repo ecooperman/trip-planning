@@ -280,6 +280,20 @@
   margin-bottom: 0;
 }
 
+.agenda-top-links-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Locked (default) state looks like every other secondary button - only
+   the unlocked state gets its own color, so an armed-for-editing agenda
+   is impossible to miss. */
+.agenda-lock-btn-unlocked {
+  color: var(--accent);
+  background: var(--accent-bg);
+}
+
 .back-link:hover {
   text-decoration: underline;
 }
@@ -417,6 +431,27 @@
 
 .agenda-entry:active {
   cursor: grabbing;
+}
+
+/* Locked (default) state - see agenda.js's agendaLocked. Dragging is
+   disabled at the source (makeDraggable's pointerdown handler bails out
+   immediately), so this is purely visual: the calendar should stop
+   *looking* interactive too, not just stop behaving that way. */
+body.agenda-locked .agenda-entry {
+  cursor: default;
+  /* Un-does the touch-action: none above - that existed so a Pointer
+     Events drag could own a touch gesture on an entry, which no longer
+     happens while locked, so let the browser's normal touch-scroll
+     through instead of it going dead under a finger. */
+  touch-action: auto;
+}
+
+body.agenda-locked .agenda-entry:active {
+  cursor: default;
+}
+
+body.agenda-locked .agenda-slot {
+  display: none;
 }
 
 .agenda-entry.dragging {
