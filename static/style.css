@@ -268,6 +268,18 @@
   text-decoration: none;
 }
 
+.agenda-top-links {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.agenda-top-links .back-link {
+  margin-bottom: 0;
+}
+
 .back-link:hover {
   text-decoration: underline;
 }
@@ -332,6 +344,19 @@
   gap: 6px;
 }
 
+/* Everything below the header scrolls on its own, capped to a fixed
+   height - an all-day-free column renders 48 half-hour slots (see
+   agenda.js), and without this cap that one column would force every
+   other day in the row to stretch to match it (flex cross-axis stretch)
+   instead of just sitting at its own natural, much shorter height. */
+.agenda-day-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  overflow-y: auto;
+  max-height: 480px;
+}
+
 .agenda-day-header {
   margin-bottom: 4px;
   padding-bottom: 8px;
@@ -349,31 +374,32 @@
   color: var(--muted);
 }
 
-.agenda-gap {
-  min-height: 28px;
+/* One 30-min drop target - deliberately thin (a tick mark with a time
+   label, not a padded button) since a fully open day renders 48 of these
+   in a row; see buildSlotsForGap in agenda.js. */
+.agenda-slot {
+  min-height: 18px;
   display: flex;
   align-items: center;
-  justify-content: center;
   border: 1px dashed var(--border);
-  border-radius: 6px;
-  padding: 4px 8px;
+  border-radius: 4px;
+  padding: 1px 6px;
   transition: background-color 0.1s ease, border-color 0.1s ease;
 }
 
-.agenda-gap-label {
-  font-size: 11px;
+.agenda-slot-time {
+  font-size: 10px;
   color: var(--muted);
-  text-align: center;
 }
 
-.agenda-gap.drag-over {
+.agenda-slot.drag-over {
   background: var(--accent-bg);
   border-color: var(--accent);
 }
 
-.agenda-gap-none {
-  min-height: 4px;
-  border: none;
+.agenda-slot.drag-over .agenda-slot-time {
+  color: var(--accent);
+  font-weight: 600;
 }
 
 .agenda-entry {

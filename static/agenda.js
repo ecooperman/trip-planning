@@ -1,10 +1,12 @@
 // Trip agenda ("production view"): a day-by-day schedule built from each
 // activity's scheduled_start/scheduled_end, plus a sidebar of activities
-// with no schedule yet. Dragging an activity onto a gap between two
-// scheduled items (or the empty space before the first / after the last /
-// across a whole open day) schedules it there if it fits, or shows an
-// error if it doesn't - see computePlacement/handleDrop below. This page
-// is read-focused; editing name/cost/etc. still happens on trip.html.
+// with no schedule yet. Each free stretch of a day (before the first
+// activity, between two, after the last, or the whole day if nothing's
+// scheduled yet) is rendered as a run of 30-minute drop slots - dragging an
+// activity onto one sets its start to exactly that slot, if its duration
+// fits before the next scheduled thing - see buildSlotsForGap/handleDrop
+// below. This page is read-focused; editing name/cost/etc. still happens
+// on trip.html.
 //
 // Drag-and-drop uses Pointer Events (pointerdown/move/up), not native HTML5
 // drag-and-drop - the native API never fires from touch input at all, on
@@ -54,8 +56,15 @@ function findStayForDay(dayIso) {
 
 // --- gap computation ---------------------------------------------------------
 
+// Slots (and the "before-first"/"empty-day" gaps that generate them) start
+// no earlier than this hour - scheduling something at 2am is rare enough
+// that showing 8 dead hours of slots before it isn't worth the scrolling.
+// An activity already scheduled earlier than this (an early flight, say)
+// still displays fine - it just won't get its own drop slots before it.
+const DAY_SLOTS_START_HOUR = 8;
+
 function buildGapsForDay(dayIso, dayActivities) {
-  const dayStart = `${dayIso}T00:00:00`;
+  const dayStart = `${dayIso}T${String(DAY_SLOTS_START_HOUR).padStart(2, "0")}:00:00`;
   const dayEnd = `${nextDayIso(dayIso)}T00:00:00`;
 
   if (dayActivities.length === 0) {
@@ -70,36 +79,31 @@ function buildGapsForDay(dayIso, dayActivities) {
   return gaps;
 }
 
-// Where in a gap a newly-placed activity should land. "before-first" anchors
-// to the END of the gap (finishes right as the next thing starts); "empty-day"
-// defaults to 9am if the activity fits after that, else falls back to
-// midnight; everything else anchors to the START of the gap (right after
-// the preceding activity ends).
-function computePlacement(gap, durationMinutes) {
-  if (gap.kind === "before-first") {
-    const start = addMinutesISO(gap.end, -durationMinutes);
-    return { scheduled_start: start, scheduled_end: gap.end };
-  }
-  if (gap.kind === "empty-day") {
-    const defaultStart = `${Global.toISODate(gap.start)}T09:00:00`;
-    const start = minutesBetween(defaultStart, gap.end) >= durationMinutes ? defaultStart : gap.start;
-    return { scheduled_start: start, scheduled_end: addMinutesISO(start, durationMinutes) };
-  }
-  return { scheduled_start: gap.start, scheduled_end: addMinutesISO(gap.start, durationMinutes) };
-}
+// --- 30-minute drop slots -----------------------------------------------------
+//
+// Each free gap is subdivided into 30-minute slots so dropping an activity
+// picks its exact start time directly, rather than the old behavior of
+// anchoring to a whole gap's edge (start of gap, end of gap, or a 9am
+// default) and needing the date/time picker afterward to fine-tune it. A
+// slot's own start IS the placement - see handleDrop. The last slot in a
+// gap is often shorter than 30 minutes (whatever's left before the gap
+// ends) - still a valid drop target for anything short enough to fit.
+const SLOT_MINUTES = 30;
 
-function gapLabel(gap, availableMinutes) {
-  const freeText = `${formatDuration(availableMinutes)} free`;
-  if (gap.kind === "empty-day") return `Nothing scheduled – ${freeText}`;
-  if (gap.kind === "before-first") return `Start of day – ${formatTime(gap.end)} (${freeText})`;
-  if (gap.kind === "after-last") return `${formatTime(gap.start)} – end of day (${freeText})`;
-  return `${formatTime(gap.start)} – ${formatTime(gap.end)} (${freeText})`;
+function buildSlotsForGap(gap) {
+  const slots = [];
+  let cursor = gap.start;
+  while (minutesBetween(cursor, gap.end) > 0) {
+    slots.push({ start: cursor, gapEnd: gap.end });
+    cursor = addMinutesISO(cursor, SLOT_MINUTES);
+  }
+  return slots;
 }
 
 // --- drop handling (shared by drag-and-drop and any future non-drag entry
 // point) -----------------------------------------------------------------
 
-async function handleDrop(activityId, gap) {
+async function handleDrop(activityId, slot) {
   const activity = activities.find((a) => a.id === activityId);
   if (!activity) return;
 
@@ -107,7 +111,7 @@ async function handleDrop(activityId, gap) {
     activity.scheduled_start && activity.scheduled_end
       ? minutesBetween(activity.scheduled_start, activity.scheduled_end)
       : 60;
-  const available = minutesBetween(gap.start, gap.end);
+  const available = minutesBetween(slot.start, slot.gapEnd);
 
   if (durationMinutes > available) {
     Global.showMessage(
@@ -117,7 +121,7 @@ async function handleDrop(activityId, gap) {
     return;
   }
 
-  const placement = computePlacement(gap, durationMinutes);
+  const placement = { scheduled_start: slot.start, scheduled_end: addMinutesISO(slot.start, durationMinutes) };
   try {
     await Global.fetchJSON(`${ACTIVITIES_API}/${activity.id}`, {
       method: "PATCH",
@@ -150,9 +154,16 @@ async function handleUnschedule(activityId) {
 // --- drag and drop (Pointer Events) ------------------------------------------
 
 const DRAG_THRESHOLD_PX = 6;
+// How close to the top/bottom edge of a day's scrollable slot list (see
+// .agenda-day-body) the pointer needs to be to auto-scroll it, and how
+// fast - a day can hold 32+ half-hour slots, more than fit in the capped
+// height, so without this you'd have to drop partway, then drag again to
+// reach further down.
+const AUTO_SCROLL_EDGE_PX = 36;
+const AUTO_SCROLL_SPEED_PX = 10;
 
-// Wires a single agenda-entry element up as draggable. Gap elements carry
-// their `gap` object directly on the DOM node (set in gapElement below) so
+// Wires a single agenda-entry element up as draggable. Slot elements carry
+// their `slot` object directly on the DOM node (set in slotElement below) so
 // drop targets are found by hit-testing with elementFromPoint during the
 // drag, rather than relying on native dragover/drop events that touch
 // input never dispatches.
@@ -166,6 +177,10 @@ function makeDraggable(entryEl, activity) {
     let ghost = null;
     let dragging = false;
     let currentTarget = null;
+    let originDayIso = null;
+    let lastX = startX;
+    let lastY = startY;
+    let rafId = null;
 
     function beginDrag() {
       dragging = true;
@@ -174,6 +189,19 @@ function makeDraggable(entryEl, activity) {
       ghost.classList.add("agenda-drag-ghost");
       ghost.style.width = `${rect.width}px`;
       document.body.appendChild(ghost);
+
+      // If this activity is already scheduled, re-render its own day with
+      // it excluded (see renderDayColumn) so slots open up in its current
+      // span too - otherwise a same-day nudge always collides with itself.
+      // cleanup() reverts this once the drag ends, whether it succeeds,
+      // fails validation, or is cancelled.
+      if (activity.scheduled_start) {
+        originDayIso = Global.toISODate(activity.scheduled_start);
+        const oldCol = document.querySelector(`.agenda-day[data-day="${originDayIso}"]`);
+        if (oldCol) oldCol.replaceWith(renderDayColumn(originDayIso, { excludeActivityId: activity.id }));
+      }
+
+      rafId = requestAnimationFrame(tick);
     }
 
     function moveGhostTo(x, y) {
@@ -186,35 +214,80 @@ function makeDraggable(entryEl, activity) {
       const under = document.elementFromPoint(x, y);
       ghost.style.display = "";
       if (!under) return null;
-      const gapEl = under.closest(".agenda-gap:not(.agenda-gap-none)");
-      if (gapEl && gapEl._gapData) return { el: gapEl, kind: "gap", gap: gapEl._gapData };
+      const slotEl = under.closest(".agenda-slot");
+      if (slotEl && slotEl._slotData) return { el: slotEl, kind: "slot", slot: slotEl._slotData };
       const unscheduledZone = under.closest("#unscheduled-list");
       if (unscheduledZone) return { el: unscheduledZone, kind: "unscheduled" };
       return null;
     }
 
+    // Scrolls whichever day's slot list the pointer is currently over, if
+    // it's near that list's top/bottom edge. A day can hold more slots
+    // than fit in its capped height (see .agenda-day-body), so this is
+    // what lets you reach a slot further down without dropping partway,
+    // then dragging a second time to cover the rest.
+    function autoScrollNear(x, y) {
+      for (const body of document.querySelectorAll(".agenda-day-body")) {
+        const r = body.getBoundingClientRect();
+        if (x < r.left || x > r.right || y < r.top || y > r.bottom) continue;
+        if (y - r.top < AUTO_SCROLL_EDGE_PX) body.scrollTop -= AUTO_SCROLL_SPEED_PX;
+        else if (r.bottom - y < AUTO_SCROLL_EDGE_PX) body.scrollTop += AUTO_SCROLL_SPEED_PX;
+        return;
+      }
+    }
+
+    // Auto-scrolls and re-highlights the drop target for the pointer's
+    // current position. Called both directly on every real pointermove
+    // (so motion feels immediate) and every animation frame for the life
+    // of the drag (so it keeps going, and the highlight keeps updating,
+    // even while the pointer holds still near an edge - content is moving
+    // under it even though the pointer itself isn't).
+    function updateDragState() {
+      autoScrollNear(lastX, lastY);
+
+      const target = findDropTarget(lastX, lastY);
+      if (currentTarget && currentTarget.el !== target?.el) currentTarget.el.classList.remove("drag-over");
+      if (target) target.el.classList.add("drag-over");
+      currentTarget = target;
+    }
+
+    function tick() {
+      if (!dragging) return;
+      updateDragState();
+      rafId = requestAnimationFrame(tick);
+    }
+
     function onMove(e) {
       if (e.pointerId !== pointerId) return;
+      lastX = e.clientX;
+      lastY = e.clientY;
       if (!dragging) {
         if (Math.abs(e.clientX - startX) < DRAG_THRESHOLD_PX && Math.abs(e.clientY - startY) < DRAG_THRESHOLD_PX) return;
         beginDrag();
       }
       e.preventDefault();
-      moveGhostTo(e.clientX, e.clientY);
-
-      const target = findDropTarget(e.clientX, e.clientY);
-      if (currentTarget && currentTarget.el !== target?.el) currentTarget.el.classList.remove("drag-over");
-      if (target) target.el.classList.add("drag-over");
-      currentTarget = target;
+      moveGhostTo(lastX, lastY);
+      updateDragState();
     }
 
     function cleanup() {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onCancel);
+      if (rafId) cancelAnimationFrame(rafId);
       if (ghost) ghost.remove();
       entryEl.classList.remove("dragging");
       if (currentTarget) currentTarget.el.classList.remove("drag-over");
+
+      // Undo the origin-day swap from beginDrag - if the drop below
+      // succeeds, loadAgenda() re-renders everything moments later anyway;
+      // if it fails validation or the drag was cancelled, this puts the
+      // activity's own entry/slots straight back rather than leaving it
+      // looking like it vanished from its day.
+      if (originDayIso) {
+        const col = document.querySelector(`.agenda-day[data-day="${originDayIso}"]`);
+        if (col) col.replaceWith(renderDayColumn(originDayIso));
+      }
     }
 
     function onUp(e) {
@@ -222,7 +295,7 @@ function makeDraggable(entryEl, activity) {
       const finalTarget = currentTarget;
       cleanup();
       if (dragging && finalTarget) {
-        if (finalTarget.kind === "gap") handleDrop(activity.id, finalTarget.gap);
+        if (finalTarget.kind === "slot") handleDrop(activity.id, finalTarget.slot);
         else handleUnschedule(activity.id);
       }
     }
@@ -295,23 +368,23 @@ function agendaEntryElement(activity) {
   return entry;
 }
 
-function gapElement(gap) {
-  const available = minutesBetween(gap.start, gap.end);
-  const gapEl = Global.el("div", { class: "agenda-gap" });
-
-  if (available <= 0) {
-    gapEl.classList.add("agenda-gap-none");
-    return gapEl;
-  }
-
-  gapEl.appendChild(Global.el("span", { class: "agenda-gap-label", text: gapLabel(gap, available) }));
-  gapEl._gapData = gap;
-  return gapEl;
+function slotElement(slot) {
+  const slotEl = Global.el("div", { class: "agenda-slot" });
+  slotEl.appendChild(Global.el("span", { class: "agenda-slot-time", text: formatTime(slot.start) }));
+  slotEl._slotData = slot;
+  return slotEl;
 }
 
-function renderDayColumn(dayIso) {
+// excludeActivityId lets a same-day drag treat the activity being moved as
+// if it were still unscheduled while computing gaps/slots - otherwise its
+// own current time span counts as an obstacle against itself, so nudging
+// it by less than its own duration always looks like a collision (the gap
+// on either side stops right at its own old start/end, not at whatever
+// genuinely comes next). See makeDraggable, which re-renders the origin
+// day with this set for the duration of the drag, then reverts it.
+function renderDayColumn(dayIso, { excludeActivityId = null } = {}) {
   const dayActivities = activities
-    .filter((a) => a.scheduled_start && Global.toISODate(a.scheduled_start) === dayIso)
+    .filter((a) => a.scheduled_start && Global.toISODate(a.scheduled_start) === dayIso && a.id !== excludeActivityId)
     .sort((a, b) => a.scheduled_start.localeCompare(b.scheduled_start));
 
   const column = Global.el("div", { class: "agenda-day", "data-day": dayIso });
@@ -325,12 +398,22 @@ function renderDayColumn(dayIso) {
   if (stay) header.appendChild(Global.el("div", { class: "agenda-day-stay", text: `📍 ${stay.name}` }));
   column.appendChild(header);
 
+  // Everything below the header scrolls independently (see
+  // .agenda-day-body in style.css) - an all-day-free column renders 48
+  // half-hour slots, and without its own scroll container that one column
+  // would force every other day in the row to stretch to match it.
+  const body = Global.el("div", { class: "agenda-day-body" });
+
+  // Every gap (before the first activity, between two, after the last, or
+  // the whole day if nothing's scheduled) renders as a run of 30-min slots
+  // rather than one big drop target - see buildSlotsForGap.
   const gaps = buildGapsForDay(dayIso, dayActivities);
-  column.appendChild(gapElement(gaps[0]));
-  dayActivities.forEach((activity, i) => {
-    column.appendChild(agendaEntryElement(activity));
-    column.appendChild(gapElement(gaps[i + 1]));
+  gaps.forEach((gap, i) => {
+    for (const slot of buildSlotsForGap(gap)) body.appendChild(slotElement(slot));
+    const activity = dayActivities[i];
+    if (activity) body.appendChild(agendaEntryElement(activity));
   });
+  column.appendChild(body);
 
   return column;
 }
@@ -423,6 +506,7 @@ async function loadAgenda() {
   ]);
   document.getElementById("page-title").textContent = `${trip.location} — Agenda`;
   document.getElementById("back-link").href = `trip.html?id=${tripId}`;
+  document.getElementById("export-link").href = `${TRIPS_API}/${tripId}/export.xlsx`;
   renderAgenda();
 }
 

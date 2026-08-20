@@ -1,9 +1,10 @@
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from .. import crud, schemas
+from .. import crud, export, schemas
 from ..deps import get_db
 
 router = APIRouter(prefix="/api/trips", tags=["trips"])
@@ -84,3 +85,23 @@ def get_stay_coverage(trip_id: int, db: Session = Depends(get_db)):
     if coverage is None:
         raise HTTPException(status_code=404, detail="Trip not found")
     return coverage
+
+
+@router.get("/{trip_id}/export.xlsx")
+def export_trip_xlsx(trip_id: int, db: Session = Depends(get_db)):
+    """A formatted, offline-friendly itinerary download - see app/export.py
+    for the actual layout (matches the hand-maintained spreadsheet format
+    Evan used before this app existed)."""
+    trip = crud.get_trip(db, trip_id)
+    if trip is None:
+        raise HTTPException(status_code=404, detail="Trip not found")
+    activities = crud.get_activities(db, trip_id=trip_id)
+    stays = crud.get_stays(db, trip_id)
+    workbook = export.build_trip_workbook(trip, activities, stays)
+    buf = export.workbook_bytes(workbook)
+    filename = export.safe_filename(trip.location)
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

@@ -6,3 +6,4 @@ sqlalchemy
 alembic==1.16.5
 requests
 beautifulsoup4
+openpyxl

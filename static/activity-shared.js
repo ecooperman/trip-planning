@@ -294,6 +294,14 @@ function buildActivityEditPane(card, activity, { onChanged, onDeleted, onUnlink,
   const mapLinkInput = Global.el("input", { type: "url", value: activity.map_link || "" });
   const scheduledStartInput = Global.el("input", { type: "datetime-local", value: toDatetimeLocal(activity.scheduled_start) });
   const scheduledEndInput = Global.el("input", { type: "datetime-local", value: toDatetimeLocal(activity.scheduled_end) });
+  // Convenience: filling in just the start time auto-fills a plausible end
+  // (start + 1h) so you don't have to type both. Only when end is still
+  // blank, so it never clobbers an end that's already set - either typed
+  // by hand, or already on the activity from a previous save.
+  scheduledStartInput.addEventListener("change", () => {
+    if (!scheduledStartInput.value || scheduledEndInput.value) return;
+    scheduledEndInput.value = toDatetimeLocal(addMinutesISO(scheduledStartInput.value, 60));
+  });
 
   const fields = Global.el("div", { class: "item-fields" }, [
     Global.el("div", { class: "field" }, [Global.el("label", { text: "Name" }), nameInput]),

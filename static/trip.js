@@ -66,8 +66,16 @@ function buildTripHeaderViewPane() {
     Global.el("span", { class: "btn-icon", "data-icon": "calendar", "aria-hidden": "true" }),
     " Agenda",
   ]);
+  // A plain download link, not a fetch+blob dance - the browser's normal
+  // download flow already does the right thing here, and this way it
+  // still works as a real link (open in new tab, etc.) if anyone wants
+  // that. See app/export.py for what actually gets generated.
+  const exportLink = Global.el("a", { href: `${TRIPS_API}/${tripId}/export.xlsx`, class: "secondary-btn", download: "" }, [
+    Global.el("span", { class: "btn-icon", "data-icon": "download", "aria-hidden": "true" }),
+    " Export",
+  ]);
   const editBtn = Global.el("button", { type: "button", class: "secondary-btn edit-toggle-btn", text: "Edit" });
-  top.appendChild(Global.el("div", { class: "trip-header-actions" }, [agendaLink, archiveBtn, editBtn, deleteBtn]));
+  top.appendChild(Global.el("div", { class: "trip-header-actions" }, [agendaLink, exportLink, archiveBtn, editBtn, deleteBtn]));
   pane.appendChild(top);
 
   const dateLabel = formatDateRange(currentTrip.start_date, currentTrip.end_date);
