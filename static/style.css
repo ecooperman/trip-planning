@@ -390,7 +390,9 @@
 
 /* One 30-min drop target - deliberately thin (a tick mark with a time
    label, not a padded button) since a fully open day renders 48 of these
-   in a row; see buildSlotsForGap in agenda.js. */
+   in a row; see buildSlotsForGap in agenda.js. Also a tap-to-create
+   target (see renderSlotIdle/renderSlotCreateForm) - cursor: pointer
+   hints that even though it looks like plain text, it's clickable. */
 .agenda-slot {
   min-height: 18px;
   display: flex;
@@ -398,6 +400,7 @@
   border: 1px dashed var(--border);
   border-radius: 4px;
   padding: 1px 6px;
+  cursor: pointer;
   transition: background-color 0.1s ease, border-color 0.1s ease;
 }
 
@@ -414,6 +417,48 @@
 .agenda-slot.drag-over .agenda-slot-time {
   color: var(--accent);
   font-weight: 600;
+}
+
+.agenda-slot.creating {
+  min-height: auto;
+  gap: 4px;
+  padding: 3px 4px;
+  border-style: solid;
+  border-color: var(--accent);
+  background: var(--accent-bg);
+  cursor: default;
+}
+
+.agenda-slot-create-input {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.agenda-slot-create-btn {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+}
+
+.agenda-slot-create-cancel {
+  flex-shrink: 0;
+  font-size: 11px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  background: var(--muted-bg);
+  color: var(--muted);
+  cursor: pointer;
 }
 
 .agenda-entry {

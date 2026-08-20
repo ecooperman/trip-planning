@@ -382,10 +382,9 @@ async function adjustDuration(activity, nextActivity, deltaMinutes) {
     return;
   }
 
-  const oldLabel = formatScheduleBadge(activity.scheduled_start, activity.scheduled_end);
-  const newLabel = formatScheduleBadge(activity.scheduled_start, newEnd);
-  if (!confirm(`Change "${activity.name}"?\n\nFrom: ${oldLabel}\nTo: ${newLabel}`)) return;
-
+  // No confirm() here, unlike handleDrop/handleUnschedule below - a button
+  // tap is a deliberate, hard-to-mis-hit action (unlike picking the wrong
+  // drag/drop target), so the extra step would just be friction.
   try {
     await Global.fetchJSON(`${ACTIVITIES_API}/${activity.id}`, {
       method: "PATCH",
@@ -485,9 +484,106 @@ function agendaEntryElement(activity, { nextActivity = null } = {}) {
 
 function slotElement(slot) {
   const slotEl = Global.el("div", { class: "agenda-slot" });
-  slotEl.appendChild(Global.el("span", { class: "agenda-slot-time", text: formatTime(slot.start) }));
   slotEl._slotData = slot;
+  renderSlotIdle(slotEl, slot);
   return slotEl;
+}
+
+// --- tap-to-create (unlocked view only - slots are display:none while
+// locked, so this is unreachable then, same as drag-and-drop) -----------
+//
+// Deliberately name-only, not the full activity form - this page's whole
+// job is scheduling, not general editing (see the header comment). It's a
+// plain POST to the same /api/activities create endpoint the real form
+// uses, with just a name and this slot's time - nothing here needs to
+// know about the other ~9 fields (address/cost/notes/...), so there's no
+// second copy of that form to keep in sync. Anything beyond a name still
+// only happens on trip.html/activities.html.
+
+function renderSlotIdle(slotEl, slot) {
+  slotEl.classList.remove("creating");
+  slotEl.innerHTML = "";
+  slotEl.appendChild(Global.el("span", { class: "agenda-slot-time", text: formatTime(slot.start) }));
+  slotEl.onclick = () => renderSlotCreateForm(slotEl, slot);
+}
+
+function renderSlotCreateForm(slotEl, slot) {
+  slotEl.classList.add("creating");
+  slotEl.onclick = null;
+  slotEl.innerHTML = "";
+
+  const nameInput = Global.el("input", { type: "text", class: "agenda-slot-create-input", placeholder: "Activity name" });
+  // Stops a click on the input/buttons from bubbling back up to a
+  // still-attached ancestor listener - cheap insurance, not currently
+  // load-bearing (slots aren't drag sources), but avoids relying on that
+  // staying true forever.
+  nameInput.addEventListener("click", (e) => e.stopPropagation());
+
+  const cancelBtn = Global.el("button", {
+    type: "button",
+    class: "agenda-slot-create-cancel",
+    text: "✕",
+    "aria-label": "Cancel",
+    onclick: (e) => {
+      e.stopPropagation();
+      renderSlotIdle(slotEl, slot);
+    },
+  });
+
+  const addBtn = Global.el("button", {
+    type: "button",
+    class: "agenda-slot-create-btn",
+    text: "Add",
+    onclick: (e) => {
+      e.stopPropagation();
+      submitSlotCreate(slotEl, slot, nameInput);
+    },
+  });
+
+  nameInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      submitSlotCreate(slotEl, slot, nameInput);
+    }
+    if (e.key === "Escape") {
+      e.preventDefault();
+      renderSlotIdle(slotEl, slot);
+    }
+  });
+
+  slotEl.append(nameInput, addBtn, cancelBtn);
+  nameInput.focus();
+}
+
+async function submitSlotCreate(slotEl, slot, nameInput) {
+  const name = nameInput.value.trim();
+  if (!name) return;
+
+  // Same default-duration and fit-check convention as dropping a
+  // previously-unscheduled activity onto a slot (see handleDrop).
+  const durationMinutes = 60;
+  const available = minutesBetween(slot.start, slot.gapEnd);
+  if (durationMinutes > available) {
+    Global.showMessage(`Not enough room here - only ${formatDuration(available)} free before the next thing.`, "error");
+    return;
+  }
+
+  try {
+    await Global.fetchJSON(ACTIVITIES_API, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name,
+        trip_id: tripId,
+        scheduled_start: slot.start,
+        scheduled_end: addMinutesISO(slot.start, durationMinutes),
+      }),
+    });
+    Global.showMessage(`Added "${name}".`, "success");
+    await loadAgenda();
+  } catch (err) {
+    Global.showMessage(err.message, "error");
+  }
 }
 
 // excludeActivityId lets a same-day drag treat the activity being moved as
