@@ -6,6 +6,53 @@ from sqlalchemy.orm import Session
 from . import models, schemas
 
 # ---------------------------------------------------------------------------
+# Categories
+# ---------------------------------------------------------------------------
+
+
+def get_categories(db: Session):
+    return db.query(models.Category).order_by(models.Category.name).all()
+
+
+def get_category(db: Session, category_id: int):
+    return db.query(models.Category).filter(models.Category.id == category_id).first()
+
+
+def create_category(db: Session, category: schemas.CategoryCreate):
+    db_category = models.Category(**category.model_dump())
+    db.add(db_category)
+    db.commit()
+    db.refresh(db_category)
+    return db_category
+
+
+def update_category(db: Session, category_id: int, updates: schemas.CategoryUpdate):
+    db_category = get_category(db, category_id)
+    if db_category is None:
+        return None
+    for field, value in updates.model_dump(exclude_unset=True).items():
+        setattr(db_category, field, value)
+    db.commit()
+    db.refresh(db_category)
+    return db_category
+
+
+def delete_category(db: Session, category_id: int) -> str:
+    """Returns 'deleted', 'not_found', or 'in_use' (refuses to delete a
+    category still assigned to any activity - the router turns 'in_use'
+    into a 409, matching time-management's own Category delete)."""
+    db_category = get_category(db, category_id)
+    if db_category is None:
+        return "not_found"
+    in_use = db.query(models.Activity).filter(models.Activity.category_id == category_id).count()
+    if in_use > 0:
+        return "in_use"
+    db.delete(db_category)
+    db.commit()
+    return "deleted"
+
+
+# ---------------------------------------------------------------------------
 # Trips
 # ---------------------------------------------------------------------------
 
@@ -35,8 +82,20 @@ def update_trip(db: Session, trip_id: int, updates: schemas.TripUpdate):
     db_trip = get_trip(db, trip_id)
     if db_trip is None:
         return None
-    for field, value in updates.model_dump(exclude_unset=True).items():
+    update_data = updates.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
         setattr(db_trip, field, value)
+    if update_data.get("archived") is True:
+        # Archiving a trip archives its activities too - tucked away the
+        # same way the trip itself is, not deleted (still there to look
+        # back on). Deliberately one-directional: unarchiving the trip
+        # does NOT auto-unarchive them back, since an activity may have
+        # been archived on its own for an unrelated reason (see
+        # Activity.archived's docstring) - undoing that silently as a side
+        # effect of the trip would be the same mistake _archive_other_stays
+        # used to make for stays.
+        for activity in db_trip.activities:
+            activity.archived = True
     db.commit()
     db.refresh(db_trip)
     return db_trip

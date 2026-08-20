@@ -20,6 +20,16 @@
 
     <div id="add-activity-container"></div>
 
+    <details id="categories-section" class="archived-section">
+      <summary><span>Manage categories</span></summary>
+      <div id="category-rows" class="category-rows"></div>
+      <form id="add-category-form" class="category-add-form">
+        <input type="text" id="new-category-name" placeholder="Category name" required />
+        <input type="color" id="new-category-color" value="#375a99" />
+        <button type="submit" class="save-btn">Add</button>
+      </form>
+    </details>
+
     <section>
       <div class="list-header">
         <h2>All activities</h2>
@@ -27,6 +37,16 @@
       </div>
       <div id="activities-list" class="item-list"></div>
       <p id="empty-state" class="empty-state" hidden>No activities yet - add one above to get started.</p>
+
+      <details id="done-activities-section" class="archived-section" hidden>
+        <summary><span id="done-activities-summary-text">Done</span></summary>
+        <div id="done-activities-list" class="item-list"></div>
+      </details>
+
+      <details id="archived-activities-section" class="archived-section" hidden>
+        <summary><span id="archived-activities-summary-text">Archived</span></summary>
+        <div id="archived-activities-list" class="item-list"></div>
+      </details>
     </section>
     <div id="app-version"></div>
   </main>

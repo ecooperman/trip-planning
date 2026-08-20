@@ -42,6 +42,31 @@ class CostValidator(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Categories
+# ---------------------------------------------------------------------------
+
+
+class CategoryBase(BaseModel):
+    name: str
+    color: str
+
+
+class CategoryCreate(CategoryBase):
+    pass
+
+
+class CategoryUpdate(BaseModel):
+    name: Optional[str] = None
+    color: Optional[str] = None
+
+
+class Category(CategoryBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+
+
+# ---------------------------------------------------------------------------
 # Trips
 # ---------------------------------------------------------------------------
 
@@ -130,6 +155,8 @@ class ActivityBase(UrlValidator, CostValidator, ScheduleValidator):
     scheduled_start: Optional[datetime] = None
     scheduled_end: Optional[datetime] = None
     done: bool = False
+    archived: bool = False
+    category_id: Optional[int] = None
 
 
 class ActivityCreate(ActivityBase):
@@ -152,6 +179,8 @@ class ActivityUpdate(UrlValidator, CostValidator, ScheduleValidator):
     scheduled_start: Optional[datetime] = None
     scheduled_end: Optional[datetime] = None
     done: Optional[bool] = None
+    archived: Optional[bool] = None
+    category_id: Optional[int] = None
 
 
 class Activity(ActivityBase):

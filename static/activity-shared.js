@@ -10,10 +10,68 @@
 // wireViewEditToggle in common.js for the swap mechanism itself.
 
 const ACTIVITIES_API = `${API_BASE}/activities`;
+const CATEGORIES_API = `${API_BASE}/categories`;
+
+// Same pattern as time-management's Category: a user-managed name+color
+// label, optionally assigned to an activity (category_id, nullable - see
+// models.py for why this one's optional unlike Task's). Fetched once into
+// module state rather than nested on every activity from the API, so both
+// pages' loadActivities() should `await loadCategoriesCache()` before
+// building any cards/forms - see activities.js/trip.js.
+let categories = [];
+let categoriesById = {};
+
+async function loadCategoriesCache() {
+  categories = await Global.fetchJSON(CATEGORIES_API);
+  categoriesById = {};
+  for (const category of categories) categoriesById[category.id] = category;
+  return categories;
+}
+
+function buildCategorySelect(selectedId) {
+  const select = Global.el("select", {});
+  select.appendChild(Global.el("option", { value: "", text: "No category" }));
+  for (const category of categories) {
+    select.appendChild(Global.el("option", { value: String(category.id), text: category.name }));
+  }
+  select.value = selectedId ? String(selectedId) : "";
+  return select;
+}
+
+// Shared by activities.html and trip.html (see their loadActivities) - the
+// same three-way split, so archived and done mean the same thing and look
+// the same wherever activities show up. archived wins over done for
+// grouping purposes (an activity can't usefully be in both lists at once) -
+// it's the "tucked away, not part of the active plan" bucket, whether or
+// not it ever got marked done first.
+function partitionActivities(activities) {
+  const active = [];
+  const done = [];
+  const archived = [];
+  for (const activity of activities) {
+    if (activity.archived) archived.push(activity);
+    else if (activity.done) done.push(activity);
+    else active.push(activity);
+  }
+  return { active, done, archived };
+}
 
 function activityCardElement(activity, opts = {}) {
   const { expanded = false, showTripBadge = false, onChanged, onDeleted, onUnlink, startInEdit = false } = opts;
-  const card = Global.el("div", { class: "item-card" + (expanded ? " expanded" : "") + (activity.done ? " done" : ""), "data-id": activity.id });
+  const category = activity.category_id ? categoriesById[activity.category_id] : null;
+  const card = Global.el("div", {
+    class:
+      "item-card" +
+      (expanded ? " expanded" : "") +
+      (activity.done ? " done" : "") +
+      (activity.archived ? " archived" : "") +
+      (category ? " has-category" : ""),
+    "data-id": activity.id,
+  });
+  // A colored left border, same idea as time-management's task cards - the
+  // one glance-able signal that doesn't cost any summary-row space, which
+  // is already tight (see the icon-vs-badge comment further down).
+  if (category) card.style.setProperty("--cat-color", category.color);
 
   // A <div role="button"> rather than a real <button> - the done checkbox
   // below is interactive content, which isn't valid (and is flaky for
@@ -54,27 +112,56 @@ function activityCardElement(activity, opts = {}) {
 
   // Small icon indicators, not full-text badges - a long date range or trip
   // name in the summary row was pushing the activity name itself down to a
-  // sliver (or off entirely) once it needed to ellipsis. The icon alone is
-  // enough to signal "this has a schedule / is on a trip"; the actual
-  // values live in the expanded view pane's fields below, and as a title
-  // tooltip here for a quick hover/long-press.
+  // sliver (or off entirely) once it needed to ellipsis. When the activity
+  // has an associated trip, each one doubles as a shortcut straight to
+  // that trip's agenda/page - padding + negative margin gives a generous
+  // tap target without extra visual space (same trick as the Agenda link
+  // on trip cards, see app.js), and stopPropagation keeps it from also
+  // toggling the card open. No trip to link to (or, for the compass, not
+  // showing a trip badge at all on this page) just falls back to a plain
+  // non-clickable indicator, tooltip only.
+  const trip = activity.trips && activity.trips[0];
+
   const schedule = formatScheduleBadge(activity.scheduled_start, activity.scheduled_end);
   if (schedule) {
-    summary.appendChild(
-      Global.el("span", { class: "item-summary-indicator", "data-icon": "calendar", "aria-hidden": "true", title: `Scheduled: ${schedule}` })
-    );
+    const scheduleTitle = `Scheduled: ${schedule}`;
+    if (trip) {
+      const link = Global.el(
+        "a",
+        {
+          href: `agenda.html?id=${trip.id}`,
+          class: "item-summary-icon-link activity-summary-schedule-link",
+          "aria-label": scheduleTitle,
+          title: scheduleTitle,
+        },
+        [Global.el("span", { class: "btn-icon", "data-icon": "calendar", "aria-hidden": "true" })]
+      );
+      link.addEventListener("click", (e) => e.stopPropagation());
+      summary.appendChild(link);
+    } else {
+      summary.appendChild(
+        Global.el("span", { class: "item-summary-indicator", "data-icon": "calendar", "aria-hidden": "true", title: scheduleTitle })
+      );
+    }
   }
 
   const cost = formatCost(activity.cost);
   if (cost) summary.appendChild(Global.el("span", { class: "item-badge item-badge-cost", text: cost }));
 
-  if (showTripBadge) {
-    const trip = activity.trips && activity.trips[0];
-    if (trip) {
-      summary.appendChild(
-        Global.el("span", { class: "item-summary-indicator", "data-icon": "compass", "aria-hidden": "true", title: `Trip: ${trip.location}` })
-      );
-    }
+  if (showTripBadge && trip) {
+    const tripTitle = `Trip: ${trip.location}`;
+    const link = Global.el(
+      "a",
+      {
+        href: `trip.html?id=${trip.id}`,
+        class: "item-summary-icon-link activity-summary-trip-link",
+        "aria-label": tripTitle,
+        title: tripTitle,
+      },
+      [Global.el("span", { class: "btn-icon", "data-icon": "compass", "aria-hidden": "true" })]
+    );
+    link.addEventListener("click", (e) => e.stopPropagation());
+    summary.appendChild(link);
   }
 
   summary.appendChild(Global.el("span", { class: "item-chevron", "aria-hidden": "true", text: "▸" }));
@@ -125,10 +212,12 @@ function buildActivityViewPane(card, activity, { onChanged, onDeleted, onUnlink,
   const tripField = showTripBadge
     ? viewField("Trip", activity.trips && activity.trips[0] ? activity.trips[0].location : "Unassociated")
     : null;
+  const category = activity.category_id ? categoriesById[activity.category_id] : null;
 
   const fields = [
     viewField("Scheduled", formatScheduleBadge(activity.scheduled_start, activity.scheduled_end)),
     tripField,
+    viewField("Category", category ? category.name : null),
     viewField("Description", activity.description),
     viewField("Notes", activity.notes),
     viewField("Address", activity.address),
@@ -182,6 +271,27 @@ function buildActivityViewPane(card, activity, { onChanged, onDeleted, onUnlink,
       })
     );
   }
+
+  // Independent of done - "didn't do this and won't" is archived, not
+  // done; "did this" is done, not archived. Also settable in bulk by
+  // archiving the whole trip (see crud.update_trip), which is why this
+  // needs to exist at all rather than just being a manual-only toggle.
+  actions.append(
+    Global.el("button", {
+      type: "button",
+      class: "secondary-btn",
+      text: activity.archived ? "Unarchive" : "Archive",
+      onclick: async () => {
+        const updated = await Global.fetchJSON(`${ACTIVITIES_API}/${activity.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ archived: !activity.archived }),
+        });
+        Global.showMessage(updated.archived ? `Archived "${updated.name}".` : `Unarchived "${updated.name}".`, "success");
+        if (onChanged) onChanged(updated);
+      },
+    })
+  );
 
   actions.append(buildDuplicatePicker(activity));
   actions.append(Global.el("button", { type: "button", class: "secondary-btn edit-toggle-btn", text: "Edit" }));
@@ -290,6 +400,7 @@ function buildActivityEditPane(card, activity, { onChanged, onDeleted, onUnlink,
   const pane = Global.el("div", { class: "edit-pane" });
 
   const nameInput = Global.el("input", { type: "text", value: activity.name, required: "required" });
+  const categorySelect = buildCategorySelect(activity.category_id);
   const descInput = Global.el("textarea", { rows: "2" });
   descInput.value = activity.description || "";
   const notesInput = Global.el("textarea", { rows: "2" });
@@ -313,6 +424,7 @@ function buildActivityEditPane(card, activity, { onChanged, onDeleted, onUnlink,
 
   const fields = Global.el("div", { class: "item-fields" }, [
     Global.el("div", { class: "field" }, [Global.el("label", { text: "Name" }), nameInput]),
+    Global.el("div", { class: "field" }, [Global.el("label", { text: "Category" }), categorySelect]),
     Global.el("div", { class: "field" }, [Global.el("label", { text: "Description" }), descInput]),
     Global.el("div", { class: "field" }, [Global.el("label", { text: "Notes" }), notesInput]),
     Global.el("div", { class: "field" }, [Global.el("label", { text: "URL" }), urlInput]),
@@ -360,6 +472,7 @@ function buildActivityEditPane(card, activity, { onChanged, onDeleted, onUnlink,
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             name,
+            category_id: categorySelect.value ? Number(categorySelect.value) : null,
             description: descInput.value.trim() || null,
             notes: notesInput.value.trim() || null,
             url: urlInput.value.trim() || null,
@@ -440,6 +553,7 @@ function renderScrapePreview(record) {
 function newActivityFormElement({ tripId = null, onCreated, prefill = null } = {}) {
   const form = Global.el("form", { class: "add-card hidden" });
   const nameInput = Global.el("input", { type: "text", required: "required", placeholder: "e.g. Louvre Museum", value: prefill?.name || "" });
+  const categorySelect = buildCategorySelect(null);
   const descInput = Global.el("textarea", { rows: "2", placeholder: "Optional notes" });
   descInput.value = prefill?.description || "";
   const notesInput = Global.el("textarea", { rows: "2", placeholder: "Optional" });
@@ -452,6 +566,7 @@ function newActivityFormElement({ tripId = null, onCreated, prefill = null } = {
 
   form.append(
     Global.el("div", { class: "field" }, [Global.el("label", { text: "Name *" }), nameInput]),
+    Global.el("div", { class: "field" }, [Global.el("label", { text: "Category" }), categorySelect]),
     Global.el("div", { class: "field" }, [Global.el("label", { text: "Description" }), descInput]),
     Global.el("div", { class: "field" }, [Global.el("label", { text: "Notes" }), notesInput]),
     Global.el("div", { class: "field" }, [Global.el("label", { text: "URL" }), urlInput]),
@@ -480,6 +595,7 @@ function newActivityFormElement({ tripId = null, onCreated, prefill = null } = {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name,
+          category_id: categorySelect.value ? Number(categorySelect.value) : null,
           description: descInput.value.trim() || null,
           notes: notesInput.value.trim() || null,
           url: urlInput.value.trim() || null,

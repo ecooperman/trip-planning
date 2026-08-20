@@ -79,8 +79,23 @@ function dateRangeDays(startIso, endIso) {
 }
 
 function findStayForDay(dayIso) {
-  return stays.find(
+  const matches = stays.filter(
     (s) => s.booked && !s.archived && Global.toISODate(s.start_date) <= dayIso && dayIso <= Global.toISODate(s.end_date)
+  );
+  if (matches.length <= 1) return matches[0];
+  // A checkout and a checkin can land on the same day when switching
+  // stays (one ends today, the next starts today) - prefer whichever
+  // you're arriving at, since that's where the night is actually spent.
+  return matches.find((s) => Global.toISODate(s.start_date) === dayIso) || matches[0];
+}
+
+// The stay you're leaving on a switch-over day, if this day is both
+// somebody's checkout and (a different) somebody's checkin - see
+// findStayForDay, which already resolves the header to the arriving one;
+// this is just what flags the day as a transition at all.
+function findDepartingStayForDay(dayIso, arrivingStay) {
+  return stays.find(
+    (s) => s.booked && !s.archived && s !== arrivingStay && Global.toISODate(s.end_date) === dayIso
   );
 }
 
@@ -614,7 +629,13 @@ function renderDayColumn(dayIso, { excludeActivityId = null } = {}) {
   // stay summary above the day columns (see renderStaySummary) rather than
   // being repeated on every day.
   const stay = findStayForDay(dayIso);
-  if (stay) header.appendChild(Global.el("div", { class: "agenda-day-stay", text: `📍 ${stay.name}` }));
+  if (stay) {
+    header.appendChild(Global.el("div", { class: "agenda-day-stay", text: `📍 ${stay.name}` }));
+    const departingStay = findDepartingStayForDay(dayIso, stay);
+    if (departingStay) {
+      header.appendChild(Global.el("div", { class: "agenda-day-stay-transition", text: `Checking out of "${departingStay.name}" today` }));
+    }
+  }
   column.appendChild(header);
 
   // Everything below the header scrolls independently (see

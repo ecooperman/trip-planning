@@ -36,6 +36,24 @@
   color: #375a99;
 }
 
+/* Same colors as the plain indicators above, applied to the clickable
+   (has-a-trip) versions instead - see activity-shared.js. */
+.activity-summary-schedule-link {
+  color: var(--success);
+}
+
+.activity-summary-schedule-link:hover {
+  opacity: 0.8;
+}
+
+.activity-summary-trip-link {
+  color: #375a99;
+}
+
+.activity-summary-trip-link:hover {
+  opacity: 0.8;
+}
+
 /* --- badges beyond the shared date/accent/muted/domain set: same pill
    shape as theme.css's .item-badge, different semantic colors --- */
 
@@ -388,6 +406,18 @@
   color: var(--muted);
 }
 
+/* Flags a switch-over day - see findDepartingStayForDay in agenda.js.
+   Accent-colored (not muted, like .agenda-day-stay) since it's worth
+   noticing at a glance: it's the one day you need to have bags packed and
+   check-out/check-in times in mind, not just another day at the same
+   place. */
+.agenda-day-stay-transition {
+  margin-top: 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
 /* One 30-min drop target - deliberately thin (a tick mark with a time
    label, not a padded button) since a fully open day renders 48 of these
    in a row; see buildSlotsForGap in agenda.js. Also a tap-to-create
@@ -608,6 +638,72 @@ body.agenda-locked .agenda-entry-resize {
 
 .agenda-unscheduled .agenda-entry {
   width: 200px;
+}
+
+/* --- categories (same idea as time-management's) - manage on
+   activities.html, assign from the activity's own form. See
+   activity-shared.js's buildCategorySelect and the .has-category card
+   accent above. --- */
+
+.category-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.category-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.category-row input[type="text"] {
+  flex: 1;
+  min-width: 0;
+}
+
+.category-row input[type="color"] {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: none;
+}
+
+.category-row button {
+  flex-shrink: 0;
+  padding: 8px 12px;
+}
+
+.category-add-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.category-add-form input[type="text"] {
+  flex: 1;
+  min-width: 0;
+}
+
+.category-add-form input[type="color"] {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: none;
+}
+
+.item-card.has-category {
+  border-left: 4px solid var(--cat-color, transparent);
 }
 
 @media (min-width: 640px) {

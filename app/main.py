@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .config import SHARED_ASSETS_BASE
-from .routers import activities, stays, trips
+from .routers import activities, categories, stays, trips
 
 # Schema is owned by Alembic migrations (see migrations/) - run
 # `alembic upgrade head` before starting the app rather than relying on
@@ -75,6 +75,7 @@ async def no_cache(request: Request, call_next):
 app.include_router(trips.router)
 app.include_router(activities.router)
 app.include_router(stays.router)
+app.include_router(categories.router)
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
 

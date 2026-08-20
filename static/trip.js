@@ -469,10 +469,29 @@ function initAddStayForm() {
 
 // --- activities (shared code with activities.html) --------------------------
 
+// Which of the three lists (see partitionActivities in activity-shared.js)
+// an activity belongs in, and that list's container element.
+function listForActivity(activity) {
+  if (activity.archived) return document.getElementById("archived-activities-list");
+  if (activity.done) return document.getElementById("done-activities-list");
+  return document.getElementById("activities-list");
+}
+
 function refreshActivityCounts() {
-  const count = document.querySelectorAll("#activities-list .item-card").length;
-  document.getElementById("activity-count").textContent = count ? `${count}` : "";
-  document.getElementById("activities-empty").hidden = count !== 0;
+  const activeCount = document.querySelectorAll("#activities-list .item-card").length;
+  const doneCount = document.querySelectorAll("#done-activities-list .item-card").length;
+  const archivedCount = document.querySelectorAll("#archived-activities-list .item-card").length;
+
+  document.getElementById("activity-count").textContent = activeCount ? `${activeCount}` : "";
+  document.getElementById("activities-empty").hidden = activeCount + doneCount + archivedCount !== 0;
+
+  const doneSection = document.getElementById("done-activities-section");
+  doneSection.hidden = doneCount === 0;
+  document.getElementById("done-activities-summary-text").textContent = `${doneCount} done`;
+
+  const archivedSection = document.getElementById("archived-activities-section");
+  archivedSection.hidden = archivedCount === 0;
+  document.getElementById("archived-activities-summary-text").textContent = `${archivedCount} archived`;
 }
 
 async function unlinkActivity(activity) {
@@ -482,21 +501,37 @@ async function unlinkActivity(activity) {
   loadUnassociatedOptions();
 }
 
+// Removes wherever the card currently is and re-places it based on the
+// activity's current done/archived state - so toggling either (the
+// Archive button or the done checkbox) moves it into the right list
+// immediately, same as activities.js's version of this.
+function handleActivityChanged(updated) {
+  const oldCard = document.querySelector(`#activities-list .item-card[data-id="${updated.id}"], #done-activities-list .item-card[data-id="${updated.id}"], #archived-activities-list .item-card[data-id="${updated.id}"]`);
+  if (oldCard) oldCard.remove();
+  placeActivityCard(updated, { expanded: true });
+  refreshActivityCounts();
+}
+
+function placeActivityCard(activity, opts = {}) {
+  const card = activityCardElement(activity, {
+    onDeleted: () => {
+      refreshActivityCounts();
+      loadUnassociatedOptions();
+    },
+    onUnlink: unlinkActivity,
+    onChanged: handleActivityChanged,
+    ...opts,
+  });
+  listForActivity(activity).appendChild(card);
+  return card;
+}
+
 async function loadActivities() {
-  const list = document.getElementById("activities-list");
-  list.innerHTML = "";
-  const activities = await Global.fetchJSON(`${TRIPS_API}/${tripId}/activities`);
-  for (const activity of activities) {
-    list.appendChild(
-      activityCardElement(activity, {
-        onDeleted: () => {
-          refreshActivityCounts();
-          loadUnassociatedOptions();
-        },
-        onUnlink: unlinkActivity,
-      })
-    );
+  for (const id of ["activities-list", "done-activities-list", "archived-activities-list"]) {
+    document.getElementById(id).innerHTML = "";
   }
+  const activities = await Global.fetchJSON(`${TRIPS_API}/${tripId}/activities`);
+  for (const activity of activities) placeActivityCard(activity);
   refreshActivityCounts();
 }
 
@@ -554,6 +589,11 @@ async function init() {
 
   initAddStayForm();
   loadStays();
+
+  // Categories have to be loaded before anything that builds a category
+  // <select> (the add form below, and every activity card/edit-pane) -
+  // see activities.js's init for the same reasoning.
+  await loadCategoriesCache();
 
   initAttachActivityPicker();
   initAddActivityToggle(document.getElementById("add-activity-container"), {

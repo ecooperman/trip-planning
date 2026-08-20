@@ -14,6 +14,23 @@ class ScrapeStatus(str, enum.Enum):
     unsupported = "unsupported"
 
 
+class Category(Base):
+    """A user-managed label (name + color) an activity can optionally
+    belong to - same shape as time-management's Category, except here
+    Activity.category_id is nullable: activities are often created quickly
+    (tap-to-create on the agenda, the trip-clipper extension) without
+    picking one, and that's a normal, expected state here, not just a
+    defensive fallback."""
+
+    __tablename__ = "categories"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String, unique=True, nullable=False)
+    color = Column(String, nullable=False)
+
+    activities = relationship("Activity", back_populates="category")
+
+
 class TripActivity(Base):
     """Join table linking trips and activities.
 
@@ -70,6 +87,14 @@ class Activity(Base):
     # summary of the place) - notes is for the user's own reminders.
     notes = Column(Text, nullable=True)
     done = Column(Boolean, nullable=False, default=False)
+    # Independent of done, same reasoning as Stay.archived - a trip you
+    # archive cascades to archive its activities (see crud.update_trip),
+    # but an activity can also be archived on its own. "Didn't do this and
+    # never will" is archived, not done; "did this" is done, not archived;
+    # an activity can't sensibly be both, but nothing enforces that at the
+    # schema level - it's just never set that way in practice.
+    archived = Column(Boolean, nullable=False, default=False)
+    category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
 
     # Both optional - null means "not yet scheduled," which is what puts it
     # in the agenda page's unscheduled sidebar rather than a day column.
@@ -90,6 +115,7 @@ class Activity(Base):
     trips = relationship(
         "Trip", secondary="trip_activities", back_populates="activities"
     )
+    category = relationship("Category", back_populates="activities")
 
 
 class Stay(Base):
