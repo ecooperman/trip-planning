@@ -14,6 +14,7 @@
 // mouse/touch/pen behind one code path instead. See makeDraggable below.
 
 const ACTIVITIES_API = `${API_BASE}/activities`;
+const CATEGORIES_API = `${API_BASE}/categories`;
 
 const params = new URLSearchParams(window.location.search);
 const tripId = Number(params.get("id"));
@@ -21,6 +22,25 @@ const tripId = Number(params.get("id"));
 let trip = null;
 let activities = [];
 let stays = [];
+
+// Fetched once into module state, same idea as activity-shared.js's
+// loadCategoriesCache (not shared directly - this page declares its own
+// ACTIVITIES_API too, so pulling in activity-shared.js whole would collide
+// on that const). Drives both the color tint on agenda entries (see
+// agendaEntryElement) and the Unscheduled section's category filter (see
+// initUnscheduledCategoryFilter).
+let categories = [];
+let categoriesById = {};
+// Category ids (as strings, matching Global.buildMultiSelect's values)
+// currently checked in the Unscheduled filter - empty means "show all".
+let unscheduledCategoryFilter = new Set();
+
+async function loadCategoriesCache() {
+  categories = await Global.fetchJSON(CATEGORIES_API);
+  categoriesById = {};
+  for (const category of categories) categoriesById[category.id] = category;
+  return categories;
+}
 
 // --- lock toggle -----------------------------------------------------------
 //
@@ -445,7 +465,16 @@ function agendaEntryElement(activity, { nextActivity = null } = {}) {
   // still a pointerdown-based drag handle (see makeDraggable below), so
   // any nested control (the resize buttons below) has to stopPropagation
   // on its own pointerdown or it'd also start a drag.
-  const entry = Global.el("div", { class: "agenda-entry" + (activity.done ? " done" : "") });
+  const category = activity.category_id ? categoriesById[activity.category_id] : null;
+  const entry = Global.el("div", { class: "agenda-entry" + (activity.done ? " done" : "") + (category ? " has-category" : "") });
+  // Same tinted-row treatment as activities.html/trip.html (see
+  // .item-card.has-category in style.css) - this is exactly the view
+  // you're scanning while dragging things into slots, so the color is
+  // more useful here than almost anywhere else in the app.
+  if (category) {
+    entry.style.setProperty("--cat-color", category.color);
+    entry.style.setProperty("--cat-text-color", category.text_color === "light" ? "#ffffff" : "#000000");
+  }
 
   if (activity.scheduled_start) {
     const timeRow = Global.el("div", { class: "agenda-entry-time-row" });
@@ -663,9 +692,40 @@ function renderUnscheduledList() {
   list.innerHTML = "";
   const unscheduled = activities.filter((a) => !a.scheduled_start);
   document.getElementById("unscheduled-empty").hidden = unscheduled.length !== 0;
-  for (const activity of unscheduled) {
+
+  const filtered =
+    unscheduledCategoryFilter.size === 0
+      ? unscheduled
+      : unscheduled.filter((a) => a.category_id && unscheduledCategoryFilter.has(String(a.category_id)));
+  // Distinct from unscheduled-empty above ("nothing unscheduled at all")
+  // so "everything's scheduled" and "your filter matched nothing" read as
+  // different states rather than the same generic empty message.
+  document.getElementById("unscheduled-filtered-empty").hidden = !(unscheduled.length > 0 && filtered.length === 0);
+
+  for (const activity of filtered) {
     list.appendChild(agendaEntryElement(activity));
   }
+}
+
+// Multiselect of every category (see Global.buildMultiSelect in
+// shared-assets' theme.js) for narrowing the Unscheduled list down to just
+// the categories you're currently placing - e.g. seeing every unscheduled
+// cafe at once to spread them one-per-morning across the trip, rather than
+// scanning the whole list by color alone.
+function initUnscheduledCategoryFilter() {
+  const mount = document.getElementById("unscheduled-category-filter-mount");
+  mount.innerHTML = "";
+  if (categories.length === 0) return; // nothing to filter by
+  const widget = Global.buildMultiSelect({
+    options: categories.map((c) => ({ value: c.id, label: c.name, color: c.color })),
+    selected: [...unscheduledCategoryFilter],
+    placeholder: "All categories",
+    onChange: (selected) => {
+      unscheduledCategoryFilter = new Set(selected);
+      renderUnscheduledList();
+    },
+  });
+  mount.appendChild(widget);
 }
 
 // --- sticky stay summary --------------------------------------------------
@@ -757,6 +817,8 @@ async function init() {
     return;
   }
   try {
+    await loadCategoriesCache();
+    initUnscheduledCategoryFilter();
     await loadAgenda();
   } catch (err) {
     Global.showMessage(err.message, "error");

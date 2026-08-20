@@ -68,10 +68,14 @@ function activityCardElement(activity, opts = {}) {
       (category ? " has-category" : ""),
     "data-id": activity.id,
   });
-  // A colored left border, same idea as time-management's task cards - the
-  // one glance-able signal that doesn't cost any summary-row space, which
-  // is already tight (see the icon-vs-badge comment further down).
-  if (category) card.style.setProperty("--cat-color", category.color);
+  // The category, if any, tints the whole summary row background (see
+  // .item-card.has-category in style.css) - text color is a per-category
+  // dark/light choice (category.text_color) rather than computed, since
+  // legible contrast against an arbitrary picked color is subjective.
+  if (category) {
+    card.style.setProperty("--cat-color", category.color);
+    card.style.setProperty("--cat-text-color", category.text_color === "light" ? "#ffffff" : "#000000");
+  }
 
   // A <div role="button"> rather than a real <button> - the done checkbox
   // below is interactive content, which isn't valid (and is flaky for
@@ -162,6 +166,15 @@ function activityCardElement(activity, opts = {}) {
     );
     link.addEventListener("click", (e) => e.stopPropagation());
     summary.appendChild(link);
+  }
+
+  // The whole row is already tinted with the category's color (see
+  // .item-card.has-category in style.css), so naming it doesn't need its
+  // own box/background on top of that - just the name in plain text, in
+  // whichever text color (--cat-text-color, set above) reads legibly
+  // against that background.
+  if (category) {
+    summary.appendChild(Global.el("span", { class: "item-summary-category-label", text: category.name }));
   }
 
   summary.appendChild(Global.el("span", { class: "item-chevron", "aria-hidden": "true", text: "▸" }));

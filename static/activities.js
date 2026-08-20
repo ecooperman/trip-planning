@@ -17,9 +17,41 @@
 // (see buildCategorySelect in activity-shared.js), same split as
 // time-management's Settings page vs. its task form.
 
+function textColorSelectElement(selected) {
+  const select = Global.el("select", { "aria-label": "Text color" }, [
+    Global.el("option", { value: "dark", text: "Dark text" }),
+    Global.el("option", { value: "light", text: "Light text" }),
+  ]);
+  select.value = selected;
+  return select;
+}
+
+// Live preview of what a real activity's summary row looks like with this
+// category applied (see .item-card.has-category in style.css) - a colored
+// swatch with the category name in the chosen text color, so you can judge
+// contrast before saving rather than guessing and checking against a real
+// activity card afterward.
+function categoryPreviewRow() {
+  return Global.el("span", { class: "category-preview-row", text: "Preview" });
+}
+
+function updateCategoryPreview(swatch, name, color, textColor) {
+  swatch.textContent = name.trim() || "Preview";
+  swatch.style.setProperty("--cat-color", color);
+  swatch.style.setProperty("--cat-text-color", textColor === "light" ? "#ffffff" : "#000000");
+}
+
 function categoryRowElement(category) {
   const nameInput = Global.el("input", { type: "text", value: category.name });
   const colorInput = Global.el("input", { type: "color", value: category.color });
+  const textColorSelect = textColorSelectElement(category.text_color);
+  const preview = categoryPreviewRow();
+  updateCategoryPreview(preview, category.name, category.color, category.text_color);
+  for (const el of [nameInput, colorInput, textColorSelect]) {
+    const refresh = () => updateCategoryPreview(preview, nameInput.value, colorInput.value, textColorSelect.value);
+    el.addEventListener("input", refresh);
+    el.addEventListener("change", refresh);
+  }
 
   const saveBtn = Global.el("button", {
     type: "button",
@@ -35,7 +67,7 @@ function categoryRowElement(category) {
         await Global.fetchJSON(`${CATEGORIES_API}/${category.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name, color: colorInput.value }),
+          body: JSON.stringify({ name, color: colorInput.value, text_color: textColorSelect.value }),
         });
         Global.showMessage(`Saved "${name}".`, "success");
         await refreshCategoriesEverywhere();
@@ -63,7 +95,7 @@ function categoryRowElement(category) {
     },
   });
 
-  return Global.el("div", { class: "category-row" }, [colorInput, nameInput, saveBtn, deleteBtn]);
+  return Global.el("div", { class: "category-row" }, [colorInput, nameInput, textColorSelect, preview, saveBtn, deleteBtn]);
 }
 
 async function refreshCategoriesEverywhere() {
@@ -90,6 +122,15 @@ function initCategoryManager() {
   const form = document.getElementById("add-category-form");
   const nameInput = document.getElementById("new-category-name");
   const colorInput = document.getElementById("new-category-color");
+  const textColorSelect = document.getElementById("new-category-text-color");
+  const preview = document.getElementById("new-category-preview");
+
+  const refreshPreview = () => updateCategoryPreview(preview, nameInput.value, colorInput.value, textColorSelect.value);
+  for (const el of [nameInput, colorInput, textColorSelect]) {
+    el.addEventListener("input", refreshPreview);
+    el.addEventListener("change", refreshPreview);
+  }
+  refreshPreview();
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -99,10 +140,11 @@ function initCategoryManager() {
       await Global.fetchJSON(CATEGORIES_API, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, color: colorInput.value }),
+        body: JSON.stringify({ name, color: colorInput.value, text_color: textColorSelect.value }),
       });
       form.reset();
       colorInput.value = "#375a99";
+      refreshPreview();
       Global.showMessage(`Added "${name}".`, "success");
       await refreshCategoriesEverywhere();
     } catch (err) {

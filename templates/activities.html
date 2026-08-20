@@ -26,6 +26,11 @@
       <form id="add-category-form" class="category-add-form">
         <input type="text" id="new-category-name" placeholder="Category name" required />
         <input type="color" id="new-category-color" value="#375a99" />
+        <select id="new-category-text-color" aria-label="Text color">
+          <option value="dark">Dark text</option>
+          <option value="light">Light text</option>
+        </select>
+        <span id="new-category-preview" class="category-preview-row">Preview</span>
         <button type="submit" class="save-btn">Add</button>
       </form>
     </details>

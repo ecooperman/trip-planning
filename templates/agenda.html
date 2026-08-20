@@ -35,10 +35,14 @@
     <div id="agenda-days" class="agenda-days"></div>
 
     <section class="section">
-      <h2>Unscheduled</h2>
+      <div class="agenda-unscheduled-header">
+        <h2>Unscheduled</h2>
+        <div id="unscheduled-category-filter-mount"></div>
+      </div>
       <p class="note">Drag one of these onto a day above, or drag a scheduled one back here to clear its time.</p>
       <div id="unscheduled-list" class="item-list agenda-unscheduled"></div>
       <p id="unscheduled-empty" class="empty-state" hidden>Nothing unscheduled.</p>
+      <p id="unscheduled-filtered-empty" class="empty-state" hidden>No unscheduled activities match the selected categories.</p>
     </section>
     <div id="app-version"></div>
   </main>

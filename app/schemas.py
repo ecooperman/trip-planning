@@ -49,6 +49,7 @@ class CostValidator(BaseModel):
 class CategoryBase(BaseModel):
     name: str
     color: str
+    text_color: str = "dark"  # "dark" or "light"
 
 
 class CategoryCreate(CategoryBase):
@@ -58,6 +59,7 @@ class CategoryCreate(CategoryBase):
 class CategoryUpdate(BaseModel):
     name: Optional[str] = None
     color: Optional[str] = None
+    text_color: Optional[str] = None
 
 
 class Category(CategoryBase):

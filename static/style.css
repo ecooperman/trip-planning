@@ -553,6 +553,19 @@ body.agenda-locked .agenda-slot {
   text-decoration: line-through;
 }
 
+/* Same lightened-tint treatment as .item-card.has-category (see comment
+   there) - this is the view you're actually scanning while dragging
+   things into slots, so the color is more useful here than almost
+   anywhere else in the app. */
+.agenda-entry.has-category {
+  background: color-mix(in srgb, var(--cat-color) 45%, white);
+  border-color: color-mix(in srgb, var(--cat-color) 60%, var(--border));
+}
+
+.agenda-entry.has-category .agenda-entry-name {
+  color: var(--cat-text-color, inherit);
+}
+
 .agenda-drag-ghost {
   position: fixed;
   z-index: 1000;
@@ -634,6 +647,18 @@ body.agenda-locked .agenda-entry-resize {
   color: var(--accent);
 }
 
+.agenda-unscheduled-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.agenda-unscheduled-header h2 {
+  margin: 0;
+}
+
 .agenda-unscheduled {
   flex-direction: row;
   flex-wrap: wrap;
@@ -681,6 +706,7 @@ body.agenda-locked .agenda-entry-resize {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .category-row input[type="text"] {
@@ -707,6 +733,7 @@ body.agenda-locked .agenda-entry-resize {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
   margin-top: 12px;
   padding: 12px 16px 16px;
   border-top: 1px solid var(--border);
@@ -714,7 +741,7 @@ body.agenda-locked .agenda-entry-resize {
 
 .category-add-form input[type="text"] {
   flex: 1;
-  min-width: 0;
+  min-width: 120px;
 }
 
 .category-add-form input[type="color"] {
@@ -727,8 +754,56 @@ body.agenda-locked .agenda-entry-resize {
   background: none;
 }
 
-.item-card.has-category {
-  border-left: 4px solid var(--cat-color, transparent);
+/* theme.css's base select styling assumes a full-width field in its own
+   form row - override just enough to sit inline with the other controls
+   in this row (color swatch, preview badge, buttons). */
+.category-row select,
+.category-add-form select {
+  width: auto;
+  flex-shrink: 0;
+}
+
+/* Live preview swatch next to each row/the add-form while picking colors -
+   same treatment as a real activity's summary row (see
+   .item-card.has-category below), just not clickable or tied to any
+   activity, so a change here shows exactly what you'll get. */
+.category-preview-row {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  background: var(--cat-color, var(--muted-bg));
+  color: var(--cat-text-color, #000);
+}
+
+/* The whole summary row is tinted with the category's color, rather than
+   just a left-border accent or a separate badge - see the comment in
+   activity-shared.js. --cat-text-color (also set there) is a per-category
+   dark/light choice, applied to the title and the category label so both
+   stay legible against an arbitrary picked background; :not(.done) leaves
+   the done-state's muted/strikethrough title color alone. */
+.item-card.has-category .item-summary {
+  /* Lightened rather than the solid category color - readable at a glance
+     for picking out "all the cafes" while scheduling, without the list
+     turning into a wall of saturated color. */
+  background: color-mix(in srgb, var(--cat-color) 45%, white);
+}
+
+.item-card.has-category:not(.done) .item-summary-title {
+  color: var(--cat-text-color, inherit);
+}
+
+.item-summary-category-label {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--cat-text-color, var(--muted));
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 @media (min-width: 640px) {

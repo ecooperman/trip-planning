@@ -27,6 +27,10 @@ class Category(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String, unique=True, nullable=False)
     color = Column(String, nullable=False)
+    # "dark" or "light" - which text color reads legibly against `color`,
+    # picked by the user rather than computed, since contrast is subjective
+    # and cheap to just ask for.
+    text_color = Column(String, nullable=False, default="dark", server_default="dark")
 
     activities = relationship("Activity", back_populates="category")
 
