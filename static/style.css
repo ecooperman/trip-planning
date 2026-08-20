@@ -4,6 +4,17 @@
    matched the shared default palette exactly, so no local token overrides
    are needed. Only what's genuinely trip-planning-specific stays here. */
 
+:root {
+  /* How solid a category's row background looks (see
+     .item-card.has-category / .agenda-entry.has-category /
+     .category-preview-row below) - all three read this one value, so
+     tweak it here rather than per-rule, and the Manage Categories preview
+     stays an accurate match for what the real rows look like. A single
+     app-wide knob, deliberately not a per-category DB field - one number
+     to eyeball rather than a setting to manage per category. */
+  --cat-bg-mix: 45%;
+}
+
 /* --- accordion cards: trip-specific indicator/badge colors (the base
    .item-card/.item-summary-done-toggle/.item-summary-icon-link states are
    in theme.css) --- */
@@ -558,7 +569,7 @@ body.agenda-locked .agenda-slot {
    things into slots, so the color is more useful here than almost
    anywhere else in the app. */
 .agenda-entry.has-category {
-  background: color-mix(in srgb, var(--cat-color) 45%, white);
+  background: color-mix(in srgb, var(--cat-color) var(--cat-bg-mix), white);
   border-color: color-mix(in srgb, var(--cat-color) 60%, var(--border));
 }
 
@@ -774,7 +785,11 @@ body.agenda-locked .agenda-entry-resize {
   font-size: 13px;
   font-weight: 600;
   white-space: nowrap;
-  background: var(--cat-color, var(--muted-bg));
+  /* Same color-mix as the real row background (--cat-bg-mix, set at
+     :root above) rather than the solid category color - otherwise this
+     preview would always look more saturated than what you actually get
+     on an activity card. */
+  background: color-mix(in srgb, var(--cat-color, var(--muted-bg)) var(--cat-bg-mix), white);
   color: var(--cat-text-color, #000);
 }
 
@@ -788,7 +803,7 @@ body.agenda-locked .agenda-entry-resize {
   /* Lightened rather than the solid category color - readable at a glance
      for picking out "all the cafes" while scheduling, without the list
      turning into a wall of saturated color. */
-  background: color-mix(in srgb, var(--cat-color) 45%, white);
+  background: color-mix(in srgb, var(--cat-color) var(--cat-bg-mix), white);
 }
 
 .item-card.has-category:not(.done) .item-summary-title {
