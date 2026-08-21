@@ -60,12 +60,17 @@ class CategoryUpdate(BaseModel):
     name: Optional[str] = None
     color: Optional[str] = None
     text_color: Optional[str] = None
+    # Set via the Manage Categories move-up/move-down buttons (see
+    # crud.update_category) - not exposed on CategoryCreate, new categories
+    # are always appended to the end (crud.create_category picks the value).
+    sort_order: Optional[int] = None
 
 
 class Category(CategoryBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    sort_order: int
 
 
 # ---------------------------------------------------------------------------

@@ -177,6 +177,24 @@ function locationQueryFor(record) {
   return record.address || record.name;
 }
 
+// --- sort-by-category, shared by activities.js and agenda.js -------------
+//
+// Groups activities by category, in the same order Manage Categories shows
+// them in (category.sort_order - see activities.js's reorderCategory) -
+// reordering categories there changes this order too, everywhere it's
+// used. Uncategorized activities sort after every real category, keeping
+// their own relative order. A plain stable sort (native Array.prototype.sort
+// is stable in every engine this app runs in) rather than a bucket/group-by,
+// so ties (same category, or both uncategorized) keep whatever order the
+// list was already in - "default order" within each group, not re-shuffled.
+function sortActivitiesByCategory(activities, categoriesById) {
+  const orderFor = (activity) => {
+    const category = activity.category_id ? categoriesById[activity.category_id] : null;
+    return category ? category.sort_order : Infinity;
+  };
+  return activities.slice().sort((a, b) => orderFor(a) - orderFor(b));
+}
+
 // --- view/edit toggle, used identically by trip/stay/activity cards -----
 //
 // Convention: each card's details area holds two sibling panes built by

@@ -1,6 +1,7 @@
 from datetime import date, datetime, timedelta
 from typing import List, Optional
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from . import models, schemas
@@ -11,7 +12,7 @@ from . import models, schemas
 
 
 def get_categories(db: Session):
-    return db.query(models.Category).order_by(models.Category.name).all()
+    return db.query(models.Category).order_by(models.Category.sort_order, models.Category.id).all()
 
 
 def get_category(db: Session, category_id: int):
@@ -19,7 +20,11 @@ def get_category(db: Session, category_id: int):
 
 
 def create_category(db: Session, category: schemas.CategoryCreate):
-    db_category = models.Category(**category.model_dump())
+    # Always appended to the end - same max+10 pattern as time-management's
+    # Task.sort_order, leaving gaps so a later reorder only has to touch the
+    # two rows being swapped.
+    max_order = db.query(func.max(models.Category.sort_order)).scalar() or 0
+    db_category = models.Category(**category.model_dump(), sort_order=max_order + 10)
     db.add(db_category)
     db.commit()
     db.refresh(db_category)

@@ -41,7 +41,17 @@ function updateCategoryPreview(swatch, name, color, textColor) {
   swatch.style.setProperty("--cat-text-color", textColor === "light" ? "#ffffff" : "#000000");
 }
 
-function categoryRowElement(category) {
+// Every currently-rendered row's live input elements, keyed by category id
+// - what "Save changes" below reads from. A row's fields are editable
+// independently of every other row's, but nothing is sent to the server
+// until you click that one button, so editing several rows in a row (e.g.
+// flipping a bunch of text-color dropdowns after seeing them all rendered
+// lighter - see the opacity change earlier) can't silently lose whichever
+// rows you didn't happen to hit "Save" on individually, the way a
+// per-row Save button did.
+let categoryRowInputs = new Map();
+
+function categoryRowElement(category, { isFirst, isLast }) {
   const nameInput = Global.el("input", { type: "text", value: category.name });
   const colorInput = Global.el("input", { type: "color", value: category.color });
   const textColorSelect = textColorSelectElement(category.text_color);
@@ -52,30 +62,34 @@ function categoryRowElement(category) {
     el.addEventListener("input", refresh);
     el.addEventListener("change", refresh);
   }
+  categoryRowInputs.set(category.id, { category, nameInput, colorInput, textColorSelect });
 
-  const saveBtn = Global.el("button", {
+  // Reordering is structural, not a field edit like name/color/text color
+  // above - it takes effect immediately (a PATCH per button click), the
+  // same way Delete does, rather than waiting on "Save changes" too.
+  const moveUpBtn = Global.el("button", {
     type: "button",
-    class: "save-btn",
-    text: "Save",
-    onclick: async () => {
-      const name = nameInput.value.trim();
-      if (!name) {
-        Global.showMessage("Category name is required.", "error");
-        return;
-      }
-      try {
-        await Global.fetchJSON(`${CATEGORIES_API}/${category.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name, color: colorInput.value, text_color: textColorSelect.value }),
-        });
-        Global.showMessage(`Saved "${name}".`, "success");
-        await refreshCategoriesEverywhere();
-      } catch (err) {
-        Global.showMessage(err.message, "error");
-      }
-    },
+    class: "icon-btn",
+    "aria-label": `Move "${category.name}" up`,
+    title: "Move up",
+    text: "▲",
+    onclick: () => reorderCategory(category, -1),
   });
+  const moveDownBtn = Global.el("button", {
+    type: "button",
+    class: "icon-btn",
+    "aria-label": `Move "${category.name}" down`,
+    title: "Move down",
+    text: "▼",
+    onclick: () => reorderCategory(category, 1),
+  });
+  // Set as a property, not an attrs["disabled"] value passed to
+  // Global.el() - "disabled" is presence-based like "checked" (see
+  // activity-shared.js's doneCheckbox comment), so disabled: false would
+  // still render disabled="false" and permanently disable the button.
+  moveUpBtn.disabled = isFirst;
+  moveDownBtn.disabled = isLast;
+  const reorderBtns = Global.el("div", { class: "category-row-reorder" }, [moveUpBtn, moveDownBtn]);
 
   const deleteBtn = Global.el("button", {
     type: "button",
@@ -95,7 +109,71 @@ function categoryRowElement(category) {
     },
   });
 
-  return Global.el("div", { class: "category-row" }, [colorInput, nameInput, textColorSelect, preview, saveBtn, deleteBtn]);
+  return Global.el("div", { class: "category-row" }, [reorderBtns, colorInput, nameInput, textColorSelect, preview, deleteBtn]);
+}
+
+// Swaps this category's sort_order with its immediate neighbor in the
+// current list (direction -1 = up, +1 = down) - the same "just touch the
+// two rows involved" swap time-management's Task drag-reorder relies on,
+// just triggered by a button instead of a drag since this list is short
+// and a full drag-and-drop rig (see agenda.js) would be a lot of new
+// machinery for a dozen rows you reorder rarely.
+async function reorderCategory(category, direction) {
+  const index = categories.findIndex((c) => c.id === category.id);
+  const neighbor = categories[index + direction];
+  if (!neighbor) return;
+  try {
+    await Promise.all([
+      Global.fetchJSON(`${CATEGORIES_API}/${category.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sort_order: neighbor.sort_order }),
+      }),
+      Global.fetchJSON(`${CATEGORIES_API}/${neighbor.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sort_order: category.sort_order }),
+      }),
+    ]);
+    await refreshCategoriesEverywhere();
+  } catch (err) {
+    Global.showMessage(err.message, "error");
+  }
+}
+
+// Sends one PATCH per row whose name/color/text_color actually changed
+// since the last render (untouched rows are skipped - no need to re-save
+// fields that are already correct). Reordering and deleting stay
+// immediate (see reorderCategory / the Delete button above) - this button
+// is only for the free-text/color fields, which you're much more likely
+// to want to change several of in one pass.
+async function saveCategoryChanges() {
+  const changed = [];
+  for (const { category, nameInput, colorInput, textColorSelect } of categoryRowInputs.values()) {
+    const name = nameInput.value.trim();
+    if (name && (name !== category.name || colorInput.value !== category.color || textColorSelect.value !== category.text_color)) {
+      changed.push({ category, name, color: colorInput.value, text_color: textColorSelect.value });
+    }
+  }
+  if (changed.length === 0) {
+    Global.showMessage("No changes to save.", "success");
+    return;
+  }
+  try {
+    await Promise.all(
+      changed.map(({ category, name, color, text_color }) =>
+        Global.fetchJSON(`${CATEGORIES_API}/${category.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, color, text_color }),
+        })
+      )
+    );
+    Global.showMessage(`Saved ${changed.length} categor${changed.length === 1 ? "y" : "ies"}.`, "success");
+    await refreshCategoriesEverywhere();
+  } catch (err) {
+    Global.showMessage(err.message, "error");
+  }
 }
 
 async function refreshCategoriesEverywhere() {
@@ -109,15 +187,20 @@ async function refreshCategoriesEverywhere() {
 function renderCategoryRows() {
   const container = document.getElementById("category-rows");
   container.innerHTML = "";
+  categoryRowInputs = new Map();
   if (categories.length === 0) {
     container.appendChild(Global.el("p", { class: "note", text: "No categories yet - add one below." }));
     return;
   }
-  for (const category of categories) container.appendChild(categoryRowElement(category));
+  categories.forEach((category, index) => {
+    container.appendChild(categoryRowElement(category, { isFirst: index === 0, isLast: index === categories.length - 1 }));
+  });
 }
 
 function initCategoryManager() {
   renderCategoryRows();
+
+  document.getElementById("save-category-changes-btn").addEventListener("click", saveCategoryChanges);
 
   const form = document.getElementById("add-category-form");
   const nameInput = document.getElementById("new-category-name");
@@ -199,6 +282,12 @@ function handleActivityChanged(updated) {
   if (oldCard) oldCard.remove();
   placeActivityCard(updated, { expanded: true });
   refreshActivityCounts();
+  // Keep the cached list (see loadedActivities above) in sync too - it's
+  // what a later sort-mode change re-renders from, so a stale entry here
+  // would make the update look like it reverted the moment you switched
+  // sort modes.
+  const cacheIndex = loadedActivities.findIndex((a) => a.id === updated.id);
+  if (cacheIndex >= 0) loadedActivities[cacheIndex] = updated;
 }
 
 function placeActivityCard(activity, opts = {}) {
@@ -212,29 +301,58 @@ function placeActivityCard(activity, opts = {}) {
   return card;
 }
 
-async function loadActivities() {
+// The full activity list from the last fetch, and the current sort mode
+// ("default" = whatever order the API returned, i.e. newest-created-first
+// - "category" = grouped by category, in Manage Categories' own order, via
+// sortActivitiesByCategory in common.js). Cached here rather than
+// re-fetched on every sort change - switching modes is a pure client-side
+// re-render of data already on hand.
+let loadedActivities = [];
+let activitySortMode = "default";
+
+function renderActivityLists() {
   for (const id of ["activities-list", "done-activities-list", "archived-activities-list"]) {
     document.getElementById(id).innerHTML = "";
   }
-  const activities = await Global.fetchJSON(ACTIVITIES_API);
+  const ordered = activitySortMode === "category" ? sortActivitiesByCategory(loadedActivities, categoriesById) : loadedActivities;
   let editTarget = null;
-  for (const activity of activities) {
+  for (const activity of ordered) {
     // ?edit=<id> (see the "Edit" link on agenda.html's entries) lands
     // here with that one activity already expanded and in edit mode,
-    // instead of you having to find and expand it yourself.
-    const isEditTarget = activity.id === editActivityId;
+    // instead of you having to find and expand it yourself - only on the
+    // render right after landing on the page, not every re-render a later
+    // sort-mode change triggers (pendingEditActivityId is cleared below
+    // once it's been used).
+    const isEditTarget = activity.id === pendingEditActivityId;
     const card = placeActivityCard(activity, { expanded: isEditTarget, startInEdit: isEditTarget });
     if (isEditTarget) editTarget = card;
   }
   refreshActivityCounts();
-  if (editTarget) editTarget.scrollIntoView({ block: "center" });
+  if (editTarget) {
+    editTarget.scrollIntoView({ block: "center" });
+    pendingEditActivityId = null;
+  }
+}
+
+async function loadActivities() {
+  loadedActivities = await Global.fetchJSON(ACTIVITIES_API);
+  renderActivityLists();
+}
+
+function initActivitySort() {
+  const select = document.getElementById("activity-sort-select");
+  select.value = activitySortMode;
+  select.addEventListener("change", () => {
+    activitySortMode = select.value;
+    renderActivityLists();
+  });
 }
 
 const pageParams = new URLSearchParams(window.location.search);
 const prefillParam = pageParams.get("prefill");
 const prefill = prefillParam ? decodeBase64UrlPrefill(prefillParam) : null;
 const editIdParam = pageParams.get("edit");
-const editActivityId = editIdParam ? Number(editIdParam) : null;
+let pendingEditActivityId = editIdParam ? Number(editIdParam) : null;
 if (prefillParam || editIdParam) {
   // Drop these from the URL so refreshing the page doesn't re-open the
   // form (with possibly now-stale prefill data) or re-jump-to-edit again.
@@ -256,11 +374,13 @@ async function init() {
     prefill,
     autoOpen: !!prefill,
     onCreated: (created) => {
+      loadedActivities.push(created);
       placeActivityCard(created, { expanded: true });
       refreshActivityCounts();
     },
   });
   initCategoryManager();
+  initActivitySort();
 
   if (prefill) Global.showMessage(`Filled in from ${prefill.url ? Global.domainFromUrl(prefill.url) || "clipped page" : "clipped page"} - review and save.`, "success");
 

@@ -31,6 +31,14 @@ class Category(Base):
     # picked by the user rather than computed, since contrast is subjective
     # and cheap to just ask for.
     text_color = Column(String, nullable=False, default="dark", server_default="dark")
+    # User-controlled display order (Manage Categories' reorder buttons) -
+    # drives both that list's own order and "sort by category" on the
+    # activities/agenda pages, so reordering categories once affects both
+    # places at once. Same append-to-the-end-with-gaps pattern as Task's
+    # sort_order in time-management (new rows get max+10, see
+    # crud.create_category) - not a plain 0,1,2... sequence, so a reorder
+    # only ever has to touch the two swapped rows.
+    sort_order = Column(Integer, nullable=False, default=0, server_default="0")
 
     activities = relationship("Activity", back_populates="category")
 

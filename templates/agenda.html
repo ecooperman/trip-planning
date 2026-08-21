@@ -37,7 +37,13 @@
     <section class="section">
       <div class="agenda-unscheduled-header">
         <h2>Unscheduled</h2>
-        <div id="unscheduled-category-filter-mount"></div>
+        <div class="agenda-unscheduled-header-controls">
+          <select id="unscheduled-sort-select" class="sort-select" aria-label="Sort unscheduled activities">
+            <option value="default">Default order</option>
+            <option value="category">By category</option>
+          </select>
+          <div id="unscheduled-category-filter-mount"></div>
+        </div>
       </div>
       <p class="note">Drag one of these onto a day above, or drag a scheduled one back here to clear its time.</p>
       <div id="unscheduled-list" class="item-list agenda-unscheduled"></div>

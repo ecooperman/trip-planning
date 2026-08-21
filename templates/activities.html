@@ -23,6 +23,9 @@
     <details id="categories-section" class="archived-section">
       <summary><span>Manage categories</span></summary>
       <div id="category-rows" class="category-rows"></div>
+      <div class="category-save-row">
+        <button type="button" id="save-category-changes-btn" class="save-btn">Save changes</button>
+      </div>
       <form id="add-category-form" class="category-add-form">
         <input type="text" id="new-category-name" placeholder="Category name" required />
         <input type="color" id="new-category-color" value="#375a99" />
@@ -39,6 +42,10 @@
       <div class="list-header">
         <h2>All activities</h2>
         <span id="activity-count" class="list-count"></span>
+        <select id="activity-sort-select" class="sort-select" aria-label="Sort activities">
+          <option value="default">Default order</option>
+          <option value="category">By category</option>
+        </select>
       </div>
       <div id="activities-list" class="item-list"></div>
       <p id="empty-state" class="empty-state" hidden>No activities yet - add one above to get started.</p>

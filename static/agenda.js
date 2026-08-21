@@ -34,6 +34,10 @@ let categoriesById = {};
 // Category ids (as strings, matching Global.buildMultiSelect's values)
 // currently checked in the Unscheduled filter - empty means "show all".
 let unscheduledCategoryFilter = new Set();
+// "default" (whatever order loadAgenda's activities came back in) or
+// "category" (sortActivitiesByCategory, common.js) - independent of the
+// filter above: filter narrows which activities show, this reorders them.
+let unscheduledSortMode = "default";
 
 async function loadCategoriesCache() {
   categories = await Global.fetchJSON(CATEGORIES_API);
@@ -702,9 +706,19 @@ function renderUnscheduledList() {
   // different states rather than the same generic empty message.
   document.getElementById("unscheduled-filtered-empty").hidden = !(unscheduled.length > 0 && filtered.length === 0);
 
-  for (const activity of filtered) {
+  const ordered = unscheduledSortMode === "category" ? sortActivitiesByCategory(filtered, categoriesById) : filtered;
+  for (const activity of ordered) {
     list.appendChild(agendaEntryElement(activity));
   }
+}
+
+function initUnscheduledSort() {
+  const select = document.getElementById("unscheduled-sort-select");
+  select.value = unscheduledSortMode;
+  select.addEventListener("change", () => {
+    unscheduledSortMode = select.value;
+    renderUnscheduledList();
+  });
 }
 
 // Multiselect of every category (see Global.buildMultiSelect in
@@ -819,6 +833,7 @@ async function init() {
   try {
     await loadCategoriesCache();
     initUnscheduledCategoryFilter();
+    initUnscheduledSort();
     await loadAgenda();
   } catch (err) {
     Global.showMessage(err.message, "error");
