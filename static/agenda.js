@@ -470,11 +470,17 @@ function agendaEntryElement(activity, { nextActivity = null } = {}) {
   // any nested control (the resize buttons below) has to stopPropagation
   // on its own pointerdown or it'd also start a drag.
   const category = activity.category_id ? categoriesById[activity.category_id] : null;
-  const entry = Global.el("div", { class: "agenda-entry" + (activity.done ? " done" : "") + (category ? " has-category" : "") });
-  // Same tinted-row treatment as activities.html/trip.html (see
-  // .item-card.has-category in style.css) - this is exactly the view
-  // you're scanning while dragging things into slots, so the color is
-  // more useful here than almost anywhere else in the app.
+  // Once something's actually scheduled into a day column, a full-color
+  // row is too loud sitting next to a bunch of other differently-colored
+  // entries - a small badge is enough there, just present if you look for
+  // it. Still-unscheduled entries keep the same tinted-row treatment as
+  // activities.html/trip.html (see .item-card.has-category) - that's
+  // exactly the view you're scanning while picking which cafe to drag in,
+  // so the color earns its keep there.
+  const isScheduled = !!activity.scheduled_start;
+  const entry = Global.el("div", {
+    class: "agenda-entry" + (activity.done ? " done" : "") + (category ? (isScheduled ? " has-category-badge" : " has-category-fill") : ""),
+  });
   if (category) {
     entry.style.setProperty("--cat-color", category.color);
     entry.style.setProperty("--cat-text-color", category.text_color === "light" ? "#ffffff" : "#000000");
@@ -494,6 +500,17 @@ function agendaEntryElement(activity, { nextActivity = null } = {}) {
   entry.appendChild(Global.el("div", { class: "agenda-entry-name", text: activity.name }));
 
   const badges = Global.el("div", { class: "agenda-entry-badges" });
+  // Neutral pill + a small colored dot, not the category's own color as a
+  // fill - deliberately quiet here (see the has-category-badge/-fill split
+  // above), tucked in among the other small badges rather than announced
+  // by the row itself.
+  if (category && isScheduled) {
+    const categoryBadge = Global.el("span", { class: "item-badge agenda-entry-category-badge" }, [
+      Global.el("span", { class: "agenda-entry-category-dot", "aria-hidden": "true" }),
+      category.name,
+    ]);
+    badges.appendChild(categoryBadge);
+  }
   const cost = formatCost(activity.cost);
   if (cost) badges.appendChild(Global.el("span", { class: "item-badge item-badge-cost", text: cost }));
   if (activity.confirmation_number) {

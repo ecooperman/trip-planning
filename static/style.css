@@ -564,17 +564,40 @@ body.agenda-locked .agenda-slot {
   text-decoration: line-through;
 }
 
-/* Same lightened-tint treatment as .item-card.has-category (see comment
-   there) - this is the view you're actually scanning while dragging
-   things into slots, so the color is more useful here than almost
-   anywhere else in the app. */
-.agenda-entry.has-category {
+/* Still-unscheduled entries: same lightened-tint treatment as
+   .item-card.has-category (see comment there) - this is the view you're
+   actually scanning while picking which one to drag in, so the color
+   earns its keep here. */
+.agenda-entry.has-category-fill {
   background: color-mix(in srgb, var(--cat-color) var(--cat-bg-mix), white);
   border-color: color-mix(in srgb, var(--cat-color) 60%, var(--border));
 }
 
-.agenda-entry.has-category .agenda-entry-name {
+.agenda-entry.has-category-fill .agenda-entry-name {
   color: var(--cat-text-color, inherit);
+}
+
+/* Once scheduled into a day column, a full-color row got messy sitting
+   next to a bunch of other differently-colored entries - just the small
+   badge below (see agenda-entry-category-badge) there instead, no row
+   background/border override needed (has-category-badge carries no styles
+   of its own - the class exists on the element only as a hook, kept for
+   parity with -fill above and in case that changes). */
+
+.agenda-entry-category-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+  background: var(--muted-bg);
+}
+
+.agenda-entry-category-dot {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--cat-color, var(--muted));
 }
 
 .agenda-drag-ghost {
