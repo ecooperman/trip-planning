@@ -149,7 +149,15 @@ function wireCategoryDrag(handle, row) {
     if (e.button !== undefined && e.button !== 0) return; // left click / primary touch only
     e.preventDefault();
     const container = row.parentElement;
-    handle.setPointerCapture(e.pointerId);
+    // Capture on the container, not the handle - the handle is a child of
+    // `row`, which this drag physically moves (container.insertBefore)
+    // every time it crosses a neighbor. Moving an element that currently
+    // holds pointer capture is exactly what was cutting drags short after
+    // one slot: some browsers drop capture as soon as the capturing
+    // element (or its ancestor) gets reparented, firing lostpointercapture
+    // mid-drag. The container itself never moves - only its children get
+    // reordered - so capturing there is immune to that.
+    container.setPointerCapture(e.pointerId);
     row.classList.add("category-row-dragging");
 
     let lastY = e.clientY;
@@ -202,17 +210,17 @@ function wireCategoryDrag(handle, row) {
       if (ended) return;
       ended = true;
       cancelAnimationFrame(rafId);
-      handle.removeEventListener("pointermove", onMove);
-      handle.removeEventListener("pointerup", end);
-      handle.removeEventListener("pointercancel", end);
-      handle.removeEventListener("lostpointercapture", end);
+      container.removeEventListener("pointermove", onMove);
+      container.removeEventListener("pointerup", end);
+      container.removeEventListener("pointercancel", end);
+      container.removeEventListener("lostpointercapture", end);
       row.classList.remove("category-row-dragging");
       await commitCategoryOrder(container);
     };
-    handle.addEventListener("pointermove", onMove);
-    handle.addEventListener("pointerup", end);
-    handle.addEventListener("pointercancel", end);
-    handle.addEventListener("lostpointercapture", end);
+    container.addEventListener("pointermove", onMove);
+    container.addEventListener("pointerup", end);
+    container.addEventListener("pointercancel", end);
+    container.addEventListener("lostpointercapture", end);
   });
 }
 
