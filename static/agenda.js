@@ -209,7 +209,7 @@ async function handleDrop(activityId, slot) {
       body: JSON.stringify(placement),
     });
     Global.showMessage(`Scheduled "${activity.name}".`, "success");
-    await loadAgenda();
+    await loadAgenda({ preserveScroll: true });
   } catch (err) {
     Global.showMessage(err.message, "error");
   }
@@ -229,7 +229,7 @@ async function handleUnschedule(activityId) {
       body: JSON.stringify({ scheduled_start: null, scheduled_end: null }),
     });
     Global.showMessage(`Unscheduled "${activity.name}".`, "success");
-    await loadAgenda();
+    await loadAgenda({ preserveScroll: true });
   } catch (err) {
     Global.showMessage(err.message, "error");
   }
@@ -431,7 +431,7 @@ async function adjustDuration(activity, nextActivity, deltaMinutes) {
       body: JSON.stringify({ scheduled_end: newEnd }),
     });
     Global.showMessage(`Updated "${activity.name}".`, "success");
-    await loadAgenda();
+    await loadAgenda({ preserveScroll: true });
   } catch (err) {
     Global.showMessage(err.message, "error");
   }
@@ -653,7 +653,7 @@ async function submitSlotCreate(slotEl, slot, nameInput) {
       }),
     });
     Global.showMessage(`Added "${name}".`, "success");
-    await loadAgenda();
+    await loadAgenda({ preserveScroll: true });
   } catch (err) {
     Global.showMessage(err.message, "error");
   }
@@ -807,8 +807,18 @@ function renderStaySummary() {
 
 // --- init ---------------------------------------------------------------------
 
-function renderAgenda() {
+// preserveScroll: keep wherever you already were (both the day-columns'
+// own horizontal scroll and the page's vertical scroll) instead of the
+// default "jump to today's column" - every action taken *from* the agenda
+// itself (resizing, dropping, unscheduling, tap-to-create) reloads via
+// this same full re-render, and re-centering on today after one of those
+// is exactly the kind of "now go find what you were just doing again"
+// jump that's disorienting rather than helpful. Only the true first load
+// (init(), below) wants the default: landing on today is genuinely useful
+// the moment you open the page, just not after every subsequent edit.
+function renderAgenda({ preserveScroll = false } = {}) {
   const container = document.getElementById("agenda-days");
+  const scrollLeftBefore = container.scrollLeft;
   container.innerHTML = "";
   renderStaySummary();
 
@@ -820,16 +830,25 @@ function renderAgenda() {
     const days = dateRangeDays(trip.start_date, trip.end_date);
     for (const dayIso of days) container.appendChild(renderDayColumn(dayIso));
 
-    const today = todayIso();
-    const initialDay = today < days[0] ? days[0] : today > days[days.length - 1] ? days[days.length - 1] : today;
-    const initialCol = container.querySelector(`[data-day="${initialDay}"]`);
-    if (initialCol) container.scrollLeft = initialCol.offsetLeft - container.offsetLeft;
+    if (preserveScroll) {
+      container.scrollLeft = scrollLeftBefore;
+    } else {
+      const today = todayIso();
+      const initialDay = today < days[0] ? days[0] : today > days[days.length - 1] ? days[days.length - 1] : today;
+      const initialCol = container.querySelector(`[data-day="${initialDay}"]`);
+      if (initialCol) container.scrollLeft = initialCol.offsetLeft - container.offsetLeft;
+    }
   }
 
   renderUnscheduledList();
 }
 
-async function loadAgenda() {
+async function loadAgenda({ preserveScroll = false } = {}) {
+  // The whole #agenda-days subtree gets rebuilt below (renderAgenda's
+  // innerHTML = "" ) - even with its own scrollLeft restored, a rebuild
+  // that changes the page's total height can still shift where you land
+  // vertically, so that gets put back too.
+  const scrollYBefore = window.scrollY;
   [trip, activities, stays] = await Promise.all([
     Global.fetchJSON(`${TRIPS_API}/${tripId}`),
     Global.fetchJSON(`${TRIPS_API}/${tripId}/activities`),
@@ -838,7 +857,8 @@ async function loadAgenda() {
   document.getElementById("page-title").textContent = `${trip.location} — Agenda`;
   document.getElementById("back-link").href = `trip.html?id=${tripId}`;
   document.getElementById("export-link").href = `${TRIPS_API}/${tripId}/export.xlsx`;
-  renderAgenda();
+  renderAgenda({ preserveScroll });
+  if (preserveScroll) window.scrollTo(0, scrollYBefore);
 }
 
 async function init() {
