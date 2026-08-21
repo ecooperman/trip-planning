@@ -19,6 +19,11 @@ def create_category(category: schemas.CategoryCreate, db: Session = Depends(get_
     return crud.create_category(db, category)
 
 
+@router.post("/reorder", response_model=List[schemas.Category])
+def reorder_categories(payload: schemas.CategoryReorderRequest, db: Session = Depends(get_db)):
+    return crud.reorder_categories(db, payload.ordered_ids)
+
+
 @router.patch("/{category_id}", response_model=schemas.Category)
 def update_category(category_id: int, updates: schemas.CategoryUpdate, db: Session = Depends(get_db)):
     category = crud.update_category(db, category_id, updates)

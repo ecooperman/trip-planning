@@ -73,6 +73,16 @@ class Category(CategoryBase):
     sort_order: int
 
 
+class CategoryReorderRequest(BaseModel):
+    # The full new order, as category ids - not id/sort_order pairs, since
+    # the client (a drag in Manage Categories) only ever knows the final
+    # order, not particular sort_order values. The server resequences
+    # everyone to clean 10/20/30... values from this (see
+    # crud.reorder_categories), the same "just tell me the final order"
+    # shape as time-management's Task reorder endpoint.
+    ordered_ids: List[int]
+
+
 # ---------------------------------------------------------------------------
 # Instagram import
 # ---------------------------------------------------------------------------

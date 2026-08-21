@@ -51,7 +51,21 @@ function updateCategoryPreview(swatch, name, color, textColor) {
 // per-row Save button did.
 let categoryRowInputs = new Map();
 
-function categoryRowElement(category, { isFirst, isLast }) {
+// Six plain CSS dots rather than a font glyph (⋮⋮, ⣿, ...) - reliably
+// crisp at this size regardless of the OS/browser's font rendering,
+// instead of hoping a particular Unicode character is in every system
+// font this could render with.
+function dragHandleElement(category) {
+  const handle = Global.el("div", {
+    class: "category-drag-handle",
+    "aria-label": `Drag to reorder "${category.name}"`,
+    title: "Drag to reorder",
+  });
+  for (let i = 0; i < 6; i++) handle.appendChild(Global.el("span", { class: "category-drag-handle-dot" }));
+  return handle;
+}
+
+function categoryRowElement(category) {
   const nameInput = Global.el("input", { type: "text", value: category.name });
   const colorInput = Global.el("input", { type: "color", value: category.color });
   const textColorSelect = textColorSelectElement(category.text_color);
@@ -64,32 +78,7 @@ function categoryRowElement(category, { isFirst, isLast }) {
   }
   categoryRowInputs.set(category.id, { category, nameInput, colorInput, textColorSelect });
 
-  // Reordering is structural, not a field edit like name/color/text color
-  // above - it takes effect immediately (a PATCH per button click), the
-  // same way Delete does, rather than waiting on "Save changes" too.
-  const moveUpBtn = Global.el("button", {
-    type: "button",
-    class: "icon-btn",
-    "aria-label": `Move "${category.name}" up`,
-    title: "Move up",
-    text: "▲",
-    onclick: () => reorderCategory(category, -1),
-  });
-  const moveDownBtn = Global.el("button", {
-    type: "button",
-    class: "icon-btn",
-    "aria-label": `Move "${category.name}" down`,
-    title: "Move down",
-    text: "▼",
-    onclick: () => reorderCategory(category, 1),
-  });
-  // Set as a property, not an attrs["disabled"] value passed to
-  // Global.el() - "disabled" is presence-based like "checked" (see
-  // activity-shared.js's doneCheckbox comment), so disabled: false would
-  // still render disabled="false" and permanently disable the button.
-  moveUpBtn.disabled = isFirst;
-  moveDownBtn.disabled = isLast;
-  const reorderBtns = Global.el("div", { class: "category-row-reorder" }, [moveUpBtn, moveDownBtn]);
+  const dragHandle = dragHandleElement(category);
 
   const deleteBtn = Global.el("button", {
     type: "button",
@@ -109,35 +98,141 @@ function categoryRowElement(category, { isFirst, isLast }) {
     },
   });
 
-  return Global.el("div", { class: "category-row" }, [reorderBtns, colorInput, nameInput, textColorSelect, preview, deleteBtn]);
+  const row = Global.el("div", { class: "category-row", "data-id": String(category.id) }, [
+    dragHandle,
+    colorInput,
+    nameInput,
+    textColorSelect,
+    preview,
+    deleteBtn,
+  ]);
+  wireCategoryDrag(dragHandle, row);
+  return row;
 }
 
-// Swaps this category's sort_order with its immediate neighbor in the
-// current list (direction -1 = up, +1 = down) - the same "just touch the
-// two rows involved" swap time-management's Task drag-reorder relies on,
-// just triggered by a button instead of a drag since this list is short
-// and a full drag-and-drop rig (see agenda.js) would be a lot of new
-// machinery for a dozen rows you reorder rarely.
-async function reorderCategory(category, direction) {
-  const index = categories.findIndex((c) => c.id === category.id);
-  const neighbor = categories[index + direction];
-  if (!neighbor) return;
+// --- drag-to-reorder ---------------------------------------------------
+//
+// A plain vertical sortable list (Pointer Events, same as agenda.js, for
+// the same mouse+touch-unification reason - native HTML5 drag-and-drop
+// never fires from touch input at all). Deliberately simpler than
+// agenda.js's drag, though: no floating ghost element, no drop-zone
+// geometry - the dragged row just swaps position in the DOM directly as
+// your pointer crosses a neighbor's midpoint (the classic minimal
+// sortable-list algorithm, see rowAfterPointerY below), which is all a
+// single vertical list needs. Reordering is structural, not a field edit
+// like name/color/text color, so a drop commits immediately (one bulk
+// request) rather than waiting on "Save changes" too - same
+// immediate-on-drop precedent as Delete.
+
+const CATEGORY_AUTO_SCROLL_EDGE_PX = 60;
+const CATEGORY_AUTO_SCROLL_SPEED_PX = 14;
+
+// Which row (if any) the dragged row should be inserted BEFORE, given the
+// pointer's current Y - null means "after every row" (append at the end).
+// The standard small "getDragAfterElement" pattern: each candidate row's
+// own vertical center is compared against the pointer, and the row whose
+// center is nearest above the pointer (i.e. offset is negative and
+// largest) is the one to insert before.
+function rowAfterPointerY(container, pointerY, draggingRow) {
+  const rows = [...container.querySelectorAll(".category-row")].filter((r) => r !== draggingRow);
+  let closest = { offset: -Infinity, row: null };
+  for (const row of rows) {
+    const box = row.getBoundingClientRect();
+    const offset = pointerY - (box.top + box.height / 2);
+    if (offset < 0 && offset > closest.offset) closest = { offset, row };
+  }
+  return closest.row;
+}
+
+function wireCategoryDrag(handle, row) {
+  handle.addEventListener("pointerdown", (e) => {
+    if (e.button !== undefined && e.button !== 0) return; // left click / primary touch only
+    e.preventDefault();
+    const container = row.parentElement;
+    handle.setPointerCapture(e.pointerId);
+    row.classList.add("category-row-dragging");
+
+    let lastY = e.clientY;
+
+    function reorderForPointer() {
+      const target = rowAfterPointerY(container, lastY, row);
+      if (target === row.nextElementSibling) return; // already there - avoid needless reflow
+      if (target) container.insertBefore(row, target);
+      else container.appendChild(row);
+    }
+
+    // The category list isn't in its own scrolling box (unlike agenda.js's
+    // day columns) - Manage Categories can run longer than the viewport,
+    // so this scrolls the whole page when the pointer nears the top/bottom
+    // edge, the window-scroll equivalent of agenda.js's autoScrollNear.
+    function autoScrollNear(y) {
+      if (y < CATEGORY_AUTO_SCROLL_EDGE_PX) window.scrollBy(0, -CATEGORY_AUTO_SCROLL_SPEED_PX);
+      else if (window.innerHeight - y < CATEGORY_AUTO_SCROLL_EDGE_PX) window.scrollBy(0, CATEGORY_AUTO_SCROLL_SPEED_PX);
+    }
+
+    // Run on every real pointermove (feels immediate) *and* every
+    // animation frame for the drag's duration (so scrolling and
+    // reordering both keep going while the pointer holds still near an
+    // edge - content is moving under it even though the pointer isn't) -
+    // same two-callers-one-function shape as agenda.js's updateDragState.
+    function updateDragState() {
+      autoScrollNear(lastY);
+      reorderForPointer();
+    }
+
+    let rafId = requestAnimationFrame(function tick() {
+      updateDragState();
+      rafId = requestAnimationFrame(tick);
+    });
+
+    const onMove = (moveEvent) => {
+      lastY = moveEvent.clientY;
+      updateDragState();
+    };
+    // pointerup/pointercancel are the "normal" end-of-drag signals, but
+    // aren't the only way capture can end (the pointer can be captured by
+    // something else, or - seen during testing - a synthesized drag can
+    // release the button without the expected pointerup ever reaching this
+    // element). lostpointercapture fires whenever capture ends for *any*
+    // reason, so it's the one actually-reliable signal to hang cleanup on;
+    // the other two are kept too since they fire first in the normal case
+    // and every listener here calls the same idempotent end() below.
+    let ended = false;
+    const end = async () => {
+      if (ended) return;
+      ended = true;
+      cancelAnimationFrame(rafId);
+      handle.removeEventListener("pointermove", onMove);
+      handle.removeEventListener("pointerup", end);
+      handle.removeEventListener("pointercancel", end);
+      handle.removeEventListener("lostpointercapture", end);
+      row.classList.remove("category-row-dragging");
+      await commitCategoryOrder(container);
+    };
+    handle.addEventListener("pointermove", onMove);
+    handle.addEventListener("pointerup", end);
+    handle.addEventListener("pointercancel", end);
+    handle.addEventListener("lostpointercapture", end);
+  });
+}
+
+// Reads the current DOM order (already live-updated by the drag itself)
+// and sends it as the new source of truth - see reorder_categories in
+// crud.py, which resequences everyone to clean 10/20/30... values from
+// this list rather than the client trying to compute a value that fits
+// between two neighbors.
+async function commitCategoryOrder(container) {
+  const orderedIds = [...container.querySelectorAll(".category-row")].map((r) => Number(r.dataset.id));
   try {
-    await Promise.all([
-      Global.fetchJSON(`${CATEGORIES_API}/${category.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sort_order: neighbor.sort_order }),
-      }),
-      Global.fetchJSON(`${CATEGORIES_API}/${neighbor.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sort_order: category.sort_order }),
-      }),
-    ]);
+    await Global.fetchJSON(`${CATEGORIES_API}/reorder`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ordered_ids: orderedIds }),
+    });
     await refreshCategoriesEverywhere();
   } catch (err) {
     Global.showMessage(err.message, "error");
+    await refreshCategoriesEverywhere(); // snap back to the real server order
   }
 }
 
@@ -192,9 +287,7 @@ function renderCategoryRows() {
     container.appendChild(Global.el("p", { class: "note", text: "No categories yet - add one below." }));
     return;
   }
-  categories.forEach((category, index) => {
-    container.appendChild(categoryRowElement(category, { isFirst: index === 0, isLast: index === categories.length - 1 }));
-  });
+  for (const category of categories) container.appendChild(categoryRowElement(category));
 }
 
 function initCategoryManager() {

@@ -31,6 +31,18 @@ def create_category(db: Session, category: schemas.CategoryCreate):
     return db_category
 
 
+def reorder_categories(db: Session, ordered_ids: List[int]):
+    db_categories = db.query(models.Category).filter(models.Category.id.in_(ordered_ids)).all()
+    by_id = {c.id: c for c in db_categories}
+    for index, category_id in enumerate(ordered_ids):
+        db_category = by_id.get(category_id)
+        if db_category is None:
+            continue  # a stale id (deleted mid-drag elsewhere) - skip rather than error
+        db_category.sort_order = (index + 1) * 10
+    db.commit()
+    return get_categories(db)
+
+
 def update_category(db: Session, category_id: int, updates: schemas.CategoryUpdate):
     db_category = get_category(db, category_id)
     if db_category is None:
