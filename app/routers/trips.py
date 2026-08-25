@@ -72,6 +72,22 @@ def unlink_activity(trip_id: int, activity_id: int, db: Session = Depends(get_db
     return {"ok": True}
 
 
+@router.post("/{trip_id}/fill-missing-cities")
+def fill_missing_activity_cities(trip_id: int, db: Session = Depends(get_db)):
+    """Sets city on every one of this trip's activities that doesn't have
+    one yet, to the trip's own city - never overwrites an activity that
+    already has its own city set (e.g. a day trip elsewhere). Re-runnable
+    any time - safe to click again after adding more activities, it only
+    ever touches whatever's still missing."""
+    trip = crud.get_trip(db, trip_id)
+    if trip is None:
+        raise HTTPException(status_code=404, detail="Trip not found")
+    if not trip.city:
+        raise HTTPException(status_code=400, detail="This trip has no city set yet")
+    updated = crud.fill_missing_activity_cities(db, trip_id, trip.city)
+    return {"updated": updated}
+
+
 @router.get("/{trip_id}/stays", response_model=List[schemas.Stay])
 def list_trip_stays(trip_id: int, db: Session = Depends(get_db)):
     if crud.get_trip(db, trip_id) is None:

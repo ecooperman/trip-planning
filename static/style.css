@@ -875,6 +875,26 @@ body.agenda-locked .agenda-entry-resize {
   margin-left: auto;
 }
 
+/* .list-header is a shared component with no flex-wrap - fine with just a
+   title/count, but the city filter + sort select together need room to
+   wrap on narrow screens rather than overflowing. */
+.list-header {
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+
+.list-header-controls {
+  margin-left: auto;
+}
+
+/* Once city-filter-mount (margin-left: auto above) has already pushed
+   itself and the sort-select after it to the row's right edge, the
+   sort-select doesn't need its own auto margin too - avoids the two
+   fighting for the same leftover space when both are present. */
+.list-header-controls + .sort-select {
+  margin-left: 0;
+}
+
 /* Live preview swatch next to each row/the add-form while picking colors -
    same treatment as a real activity's summary row (see
    .item-card.has-category below), just not clickable or tied to any

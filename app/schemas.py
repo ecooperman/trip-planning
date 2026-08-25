@@ -119,6 +119,7 @@ class InstagramImportResult(BaseModel):
 
 class TripBase(BaseModel):
     location: str
+    city: Optional[str] = None
     start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None
     archived: bool = False
@@ -136,6 +137,7 @@ class TripCreate(TripBase):
 
 class TripUpdate(BaseModel):
     location: Optional[str] = None
+    city: Optional[str] = None
     start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None
     archived: Optional[bool] = None
@@ -191,6 +193,7 @@ class ActivityBase(UrlValidator, CostValidator, ScheduleValidator):
     cost: Optional[int] = None
     confirmation_number: Optional[str] = None
     address: Optional[str] = None
+    city: Optional[str] = None
     phone_number: Optional[str] = None
     map_link: Optional[str] = None
     # Separate from `description` - notes is for the user's own reminders,
@@ -219,6 +222,7 @@ class ActivityUpdate(UrlValidator, CostValidator, ScheduleValidator):
     cost: Optional[int] = None
     confirmation_number: Optional[str] = None
     address: Optional[str] = None
+    city: Optional[str] = None
     phone_number: Optional[str] = None
     map_link: Optional[str] = None
     notes: Optional[str] = None

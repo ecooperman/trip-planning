@@ -42,6 +42,7 @@
       <div class="list-header">
         <h2>All activities</h2>
         <span id="activity-count" class="list-count"></span>
+        <div id="city-filter-mount" class="list-header-controls"></div>
         <select id="activity-sort-select" class="sort-select" aria-label="Sort activities">
           <option value="default">Default order</option>
           <option value="category">By category</option>
@@ -49,6 +50,7 @@
       </div>
       <div id="activities-list" class="item-list"></div>
       <p id="empty-state" class="empty-state" hidden>No activities yet - add one above to get started.</p>
+      <p id="city-filtered-empty" class="empty-state" hidden>No activities match the selected cities.</p>
 
       <details id="done-activities-section" class="archived-section" hidden>
         <summary><span id="done-activities-summary-text">Done</span></summary>

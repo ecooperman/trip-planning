@@ -65,6 +65,12 @@ class Trip(Base):
 
     id = Column(Integer, primary_key=True)
     location = Column(String, nullable=False)
+    # A clean city name, separate from `location` - `location` is more of a
+    # trip title ("Toronto Music," "Raj's Cabin in New Lisbon Wisconsin")
+    # than a reliable city string, same reason Activity.city (below) isn't
+    # parsed out of addresses either. Used to bulk-fill Activity.city for
+    # activities that don't have their own yet (see crud.fill_missing_activity_cities).
+    city = Column(String, nullable=True)
     start_date = Column(DateTime, nullable=True)
     end_date = Column(DateTime, nullable=True)
     archived = Column(Boolean, nullable=False, default=False)
@@ -93,6 +99,14 @@ class Activity(Base):
     cost = Column(Integer, nullable=True)
     confirmation_number = Column(String, nullable=True)
     address = Column(String, nullable=True)
+    # Explicit, not parsed out of `address` - real addresses in this app
+    # come from too many different sources (manual entry, Yelp scrapes,
+    # Instagram imports) with wildly inconsistent formatting for a comma-
+    # split to reliably find the city (confirmed against real data before
+    # building this: some have no comma at all, some have the city as the
+    # last segment rather than the second). Lets you filter to "what did we
+    # skip in a city we're revisiting" on activities.html.
+    city = Column(String, nullable=True)
     phone_number = Column(String, nullable=True)
     map_link = Column(String, nullable=True)
     # Separate from `description` (which tends to hold a scraped/copied

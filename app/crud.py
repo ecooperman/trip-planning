@@ -87,6 +87,20 @@ def get_trip(db: Session, trip_id: int):
     return db.query(models.Trip).filter(models.Trip.id == trip_id).first()
 
 
+def fill_missing_activity_cities(db: Session, trip_id: int, city: str) -> int:
+    activities = (
+        db.query(models.Activity)
+        .join(models.TripActivity, models.TripActivity.activity_id == models.Activity.id)
+        .filter(models.TripActivity.trip_id == trip_id)
+        .filter((models.Activity.city.is_(None)) | (models.Activity.city == ""))
+        .all()
+    )
+    for activity in activities:
+        activity.city = city
+    db.commit()
+    return len(activities)
+
+
 def create_trip(db: Session, trip: schemas.TripCreate):
     db_trip = models.Trip(**trip.model_dump())
     db.add(db_trip)
@@ -182,6 +196,17 @@ def get_trip_stay_coverage(db: Session, trip_id: int) -> Optional[dict]:
 # ---------------------------------------------------------------------------
 # Activities
 # ---------------------------------------------------------------------------
+
+
+def get_all_cities(db: Session) -> List[str]:
+    """Every distinct city in use, from both Trip.city and Activity.city -
+    powers the datalist on both the trip and activity forms (so naming
+    stays consistent no matter where you set it) and the city filter on
+    activities.html. Not a managed table like Category - just whatever
+    strings are actually in use, alphabetized."""
+    trip_cities = {c for (c,) in db.query(models.Trip.city).filter(models.Trip.city.isnot(None), models.Trip.city != "").distinct()}
+    activity_cities = {c for (c,) in db.query(models.Activity.city).filter(models.Activity.city.isnot(None), models.Activity.city != "").distinct()}
+    return sorted(trip_cities | activity_cities)
 
 
 def get_activities(

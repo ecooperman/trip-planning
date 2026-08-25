@@ -11,6 +11,7 @@
 
 const ACTIVITIES_API = `${API_BASE}/activities`;
 const CATEGORIES_API = `${API_BASE}/categories`;
+const CITIES_API = `${ACTIVITIES_API}/cities`;
 
 // Same pattern as time-management's Category: a user-managed name+color
 // label, optionally assigned to an activity (category_id, nullable - see
@@ -36,6 +37,38 @@ function buildCategorySelect(selectedId) {
   }
   select.value = selectedId ? String(selectedId) : "";
   return select;
+}
+
+// Every distinct city already in use (both trips' and activities' - see
+// crud.get_all_cities), fetched once so the city text input on every
+// activity's form, plus the trip header's own city field, can offer the
+// same <datalist> suggestions - a plain text field would otherwise let
+// "Toronto" get spelled a few different ways across activities and quietly
+// break the city filter. One shared <datalist> in the page (built by
+// refreshCityDatalist, appended once to <body>) rather than a copy per
+// input - a <datalist> id can be referenced by any number of inputs via
+// their own list="..." attribute.
+const CITY_DATALIST_ID = "city-datalist";
+let cities = [];
+
+async function loadCitiesCache() {
+  cities = await Global.fetchJSON(CITIES_API);
+  refreshCityDatalist();
+  return cities;
+}
+
+function refreshCityDatalist() {
+  let datalist = document.getElementById(CITY_DATALIST_ID);
+  if (!datalist) {
+    datalist = Global.el("datalist", { id: CITY_DATALIST_ID });
+    document.body.appendChild(datalist);
+  }
+  datalist.innerHTML = "";
+  for (const city of cities) datalist.appendChild(Global.el("option", { value: city }));
+}
+
+function cityInputElement(value) {
+  return Global.el("input", { type: "text", value: value || "", list: CITY_DATALIST_ID, placeholder: "City" });
 }
 
 // Shared by activities.html and trip.html (see their loadActivities) - the
@@ -234,6 +267,7 @@ function buildActivityViewPane(card, activity, { onChanged, onDeleted, onUnlink,
     viewField("Description", activity.description),
     viewField("Notes", activity.notes),
     viewField("Address", activity.address),
+    viewField("City", activity.city),
     viewField("Confirmation #", activity.confirmation_number),
   ].filter(Boolean);
   if (fields.length) pane.appendChild(Global.el("div", { class: "view-fields" }, fields));
@@ -422,6 +456,7 @@ function buildActivityEditPane(card, activity, { onChanged, onDeleted, onUnlink,
   const costInput = Global.el("input", { type: "number", min: "0", step: "1", value: activity.cost ?? "" });
   const confirmationInput = Global.el("input", { type: "text", value: activity.confirmation_number || "" });
   const addressInput = Global.el("input", { type: "text", value: activity.address || "" });
+  const cityInput = cityInputElement(activity.city);
   const phoneInput = Global.el("input", { type: "tel", value: activity.phone_number || "" });
   const mapLinkInput = Global.el("input", { type: "url", value: activity.map_link || "" });
   const scheduledStartInput = Global.el("input", { type: "datetime-local", value: toDatetimeLocal(activity.scheduled_start) });
@@ -442,6 +477,7 @@ function buildActivityEditPane(card, activity, { onChanged, onDeleted, onUnlink,
     Global.el("div", { class: "field" }, [Global.el("label", { text: "Notes" }), notesInput]),
     Global.el("div", { class: "field" }, [Global.el("label", { text: "URL" }), urlInput]),
     Global.el("div", { class: "field" }, [Global.el("label", { text: "Address" }), addressInput]),
+    Global.el("div", { class: "field" }, [Global.el("label", { text: "City" }), cityInput]),
     Global.el("div", { class: "field" }, [Global.el("label", { text: "Phone" }), phoneInput]),
     Global.el("div", { class: "field" }, [Global.el("label", { text: "Map link" }), mapLinkInput]),
     Global.el("div", { class: "field" }, [Global.el("label", { text: "Cost ($)" }), costInput]),
@@ -490,6 +526,7 @@ function buildActivityEditPane(card, activity, { onChanged, onDeleted, onUnlink,
             notes: notesInput.value.trim() || null,
             url: urlInput.value.trim() || null,
             address: addressInput.value.trim() || null,
+            city: cityInput.value.trim() || null,
             phone_number: phoneInput.value.trim() || null,
             map_link: mapLinkInput.value.trim() || null,
             cost: costValue === "" ? null : Number(costValue),
@@ -499,6 +536,10 @@ function buildActivityEditPane(card, activity, { onChanged, onDeleted, onUnlink,
           }),
         });
         Global.showMessage(`Saved "${name}".`, "success");
+        // Fire-and-forget - picks up a newly-typed city for the shared
+        // datalist right away, without waiting on it before the card swap
+        // below (a stale datalist for a few moments isn't worth blocking on).
+        loadCitiesCache();
         if (onChanged) onChanged(updated);
         card.replaceWith(activityCardElement(updated, { expanded: true, showTripBadge, onChanged, onDeleted, onUnlink }));
       } catch (err) {
@@ -563,7 +604,7 @@ function renderScrapePreview(record) {
 // behavioral difference between the two call sites). `prefill` (from the
 // trip-clipper extension's ?prefill= param, see activities.js) fills in
 // initial values for review before saving - nothing is ever auto-submitted.
-function newActivityFormElement({ tripId = null, onCreated, prefill = null } = {}) {
+function newActivityFormElement({ tripId = null, tripCity = null, onCreated, prefill = null } = {}) {
   const form = Global.el("form", { class: "add-card hidden" });
   const nameInput = Global.el("input", { type: "text", required: "required", placeholder: "e.g. Louvre Museum", value: prefill?.name || "" });
   const categorySelect = buildCategorySelect(null);
@@ -572,6 +613,10 @@ function newActivityFormElement({ tripId = null, onCreated, prefill = null } = {
   const notesInput = Global.el("textarea", { rows: "2", placeholder: "Optional" });
   const urlInput = Global.el("input", { type: "url", placeholder: "https://...", value: prefill?.url || "" });
   const addressInput = Global.el("input", { type: "text", placeholder: "Optional", value: prefill?.address || "" });
+  // Defaults to the trip's own city (most activities in a trip share one) -
+  // still fully editable for a day trip elsewhere. Blank on activities.html
+  // (no tripCity there - no trip context to default from).
+  const cityInput = cityInputElement(tripCity);
   const phoneInput = Global.el("input", { type: "tel", placeholder: "Optional", value: prefill?.phone_number || "" });
   const mapLinkInput = Global.el("input", { type: "url", placeholder: "Optional", value: prefill?.map_link || "" });
   const costInput = Global.el("input", { type: "number", min: "0", step: "1", placeholder: "Optional" });
@@ -583,7 +628,10 @@ function newActivityFormElement({ tripId = null, onCreated, prefill = null } = {
     Global.el("div", { class: "field" }, [Global.el("label", { text: "Description" }), descInput]),
     Global.el("div", { class: "field" }, [Global.el("label", { text: "Notes" }), notesInput]),
     Global.el("div", { class: "field" }, [Global.el("label", { text: "URL" }), urlInput]),
-    Global.el("div", { class: "field" }, [Global.el("label", { text: "Address" }), addressInput]),
+    Global.el("div", { class: "field-row" }, [
+      Global.el("div", { class: "field" }, [Global.el("label", { text: "Address" }), addressInput]),
+      Global.el("div", { class: "field" }, [Global.el("label", { text: "City" }), cityInput]),
+    ]),
     Global.el("div", { class: "field-row" }, [
       Global.el("div", { class: "field" }, [Global.el("label", { text: "Phone" }), phoneInput]),
       Global.el("div", { class: "field" }, [Global.el("label", { text: "Map link" }), mapLinkInput]),
@@ -613,6 +661,7 @@ function newActivityFormElement({ tripId = null, onCreated, prefill = null } = {
           notes: notesInput.value.trim() || null,
           url: urlInput.value.trim() || null,
           address: addressInput.value.trim() || null,
+          city: cityInput.value.trim() || null,
           phone_number: phoneInput.value.trim() || null,
           map_link: mapLinkInput.value.trim() || null,
           cost: costValue === "" ? null : Number(costValue),
@@ -621,8 +670,10 @@ function newActivityFormElement({ tripId = null, onCreated, prefill = null } = {
         }),
       });
       form.reset();
+      cityInput.value = tripCity || ""; // form.reset() would otherwise blank the trip-city default back out
       form.classList.add("hidden");
       Global.showMessage(`Added "${name}".`, "success");
+      loadCitiesCache(); // fire-and-forget - same reasoning as the edit-pane save above
       if (onCreated) onCreated(created);
     } catch (err) {
       Global.showMessage(err.message, "error");
@@ -636,10 +687,11 @@ function newActivityFormElement({ tripId = null, onCreated, prefill = null } = {
 // show/cancel behavior used across every add-card in this app. Pass
 // `prefill` + `autoOpen: true` to land with the form already open and
 // filled in (the trip-clipper extension flow).
-function initAddActivityToggle(container, { tripId = null, onCreated, prefill = null, autoOpen = false } = {}) {
+function initAddActivityToggle(container, { tripId = null, tripCity = null, onCreated, prefill = null, autoOpen = false } = {}) {
   const showBtn = Global.el("button", { type: "button", class: "add-toggle", text: "+ Add Activity" });
   const form = newActivityFormElement({
     tripId,
+    tripCity,
     prefill,
     onCreated: (created) => {
       form.classList.add("hidden");

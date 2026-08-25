@@ -360,7 +360,10 @@ function refreshActivityCounts() {
   const archivedCount = document.querySelectorAll("#archived-activities-list .item-card").length;
 
   document.getElementById("activity-count").textContent = activeCount ? `${activeCount}` : "";
-  document.getElementById("empty-state").hidden = activeCount + doneCount + archivedCount !== 0;
+  // Only the true "you have no activities at all" case, not "your city
+  // filter matched nothing" - that's city-filtered-empty's job (see
+  // renderActivityLists), a different message for a different situation.
+  document.getElementById("empty-state").hidden = activeCount + doneCount + archivedCount !== 0 || cityFilter.size > 0;
 
   const doneSection = document.getElementById("done-activities-section");
   doneSection.hidden = doneCount === 0;
@@ -379,16 +382,21 @@ function refreshActivityCounts() {
 // (activity-shared.js calls this before its own in-place replaceWith,
 // which then becomes a harmless no-op on the now-detached old card).
 function handleActivityChanged(updated) {
-  const oldCard = document.querySelector(`#activities-list .item-card[data-id="${updated.id}"], #done-activities-list .item-card[data-id="${updated.id}"], #archived-activities-list .item-card[data-id="${updated.id}"]`);
-  if (oldCard) oldCard.remove();
-  placeActivityCard(updated, { expanded: true });
-  refreshActivityCounts();
-  // Keep the cached list (see loadedActivities above) in sync too - it's
-  // what a later sort-mode change re-renders from, so a stale entry here
-  // would make the update look like it reverted the moment you switched
-  // sort modes.
+  // Keep the cached list (see loadedActivities above) in sync - it's what
+  // renderActivityLists (below) re-renders from.
   const cacheIndex = loadedActivities.findIndex((a) => a.id === updated.id);
   if (cacheIndex >= 0) loadedActivities[cacheIndex] = updated;
+
+  // A full re-render, not a targeted remove+replace - the edit may have
+  // changed done/archived (needs a different list), category (may change
+  // its position when sorted by category), or city (might now fail an
+  // active filter entirely) - renderActivityLists is the one place all of
+  // those are already handled correctly together. pendingEditActivityId
+  // (normally the agenda ?edit= deep-link's job) is reused here just to
+  // keep the just-saved card expanded, the same UX a direct replace used
+  // to give for free.
+  pendingEditActivityId = updated.id;
+  renderActivityLists();
 }
 
 function placeActivityCard(activity, opts = {}) {
@@ -410,12 +418,20 @@ function placeActivityCard(activity, opts = {}) {
 // re-render of data already on hand.
 let loadedActivities = [];
 let activitySortMode = "default";
+// City names (as-is, matching activity.city exactly) currently checked in
+// the filter - empty means "show all". Not category ids like the agenda
+// filter - there's no managed City table, just whatever strings are
+// actually in use (see loadCitiesCache in activity-shared.js).
+let cityFilter = new Set();
 
 function renderActivityLists() {
   for (const id of ["activities-list", "done-activities-list", "archived-activities-list"]) {
     document.getElementById(id).innerHTML = "";
   }
-  const ordered = activitySortMode === "category" ? sortActivitiesByCategory(loadedActivities, categoriesById) : loadedActivities;
+  const filtered = cityFilter.size === 0 ? loadedActivities : loadedActivities.filter((a) => a.city && cityFilter.has(a.city));
+  document.getElementById("city-filtered-empty").hidden = !(loadedActivities.length > 0 && filtered.length === 0);
+
+  const ordered = activitySortMode === "category" ? sortActivitiesByCategory(filtered, categoriesById) : filtered;
   let editTarget = null;
   for (const activity of ordered) {
     // ?edit=<id> (see the "Edit" link on agenda.html's entries) lands
@@ -429,15 +445,38 @@ function renderActivityLists() {
     if (isEditTarget) editTarget = card;
   }
   refreshActivityCounts();
-  if (editTarget) {
-    editTarget.scrollIntoView({ block: "center" });
-    pendingEditActivityId = null;
-  }
+  if (editTarget) editTarget.scrollIntoView({ block: "center" });
+  // Cleared unconditionally, not just on a match - an edit that changes an
+  // activity's city to something the active filter now excludes means it
+  // never renders at all this pass, and a lingering id here would wrongly
+  // auto-expand+scroll to it if it reappears on some later, unrelated
+  // render (e.g. after the filter's cleared).
+  pendingEditActivityId = null;
 }
 
 async function loadActivities() {
   loadedActivities = await Global.fetchJSON(ACTIVITIES_API);
   renderActivityLists();
+}
+
+// Multiselect of every city in use (see Global.buildMultiSelect in
+// shared-assets' theme.js, and loadCitiesCache/cities in
+// activity-shared.js) - so if you're heading back somewhere, you can
+// filter straight down to "what did we not get to in Toronto."
+function initCityFilter() {
+  const mount = document.getElementById("city-filter-mount");
+  mount.innerHTML = "";
+  if (cities.length === 0) return; // nothing to filter by yet
+  const widget = Global.buildMultiSelect({
+    options: cities.map((c) => ({ value: c, label: c })),
+    selected: [...cityFilter],
+    placeholder: "All cities",
+    onChange: (selected) => {
+      cityFilter = new Set(selected);
+      renderActivityLists();
+    },
+  });
+  mount.appendChild(widget);
 }
 
 function initActivitySort() {
@@ -469,6 +508,7 @@ async function init() {
   // otherwise those selects would render with no options and never pick
   // up categories that show up after the fact.
   await loadCategoriesCache();
+  await loadCitiesCache();
 
   initAddActivityToggle(document.getElementById("add-activity-container"), {
     tripId: null,
@@ -476,12 +516,16 @@ async function init() {
     autoOpen: !!prefill,
     onCreated: (created) => {
       loadedActivities.push(created);
-      placeActivityCard(created, { expanded: true });
-      refreshActivityCounts();
+      // A full re-render, not a direct placeActivityCard append - a filter
+      // may be active, and the new activity might not match it (wrong
+      // city). renderActivityLists re-applies both the filter and the
+      // current sort mode rather than unconditionally showing it.
+      renderActivityLists();
     },
   });
   initCategoryManager();
   initActivitySort();
+  initCityFilter();
 
   if (prefill) Global.showMessage(`Filled in from ${prefill.url ? Global.domainFromUrl(prefill.url) || "clipped page" : "clipped page"} - review and save.`, "success");
 

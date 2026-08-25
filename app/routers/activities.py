@@ -26,6 +26,15 @@ def create_activity(activity: schemas.ActivityCreate, db: Session = Depends(get_
     return crud.create_activity(db, activity)
 
 
+@router.get("/cities", response_model=List[str])
+def list_cities(db: Session = Depends(get_db)):
+    # Must stay registered before /{activity_id} below - Starlette matches
+    # routes by path structure only (no type-checking at match time, unlike
+    # FastAPI's later parameter validation), so "cities" would otherwise
+    # match {activity_id} first and 422 trying to parse it as an int.
+    return crud.get_all_cities(db)
+
+
 @router.get("/{activity_id}", response_model=schemas.Activity)
 def get_activity(activity_id: int, db: Session = Depends(get_db)):
     activity = crud.get_activity(db, activity_id)

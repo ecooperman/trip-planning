@@ -75,11 +75,41 @@ function buildTripHeaderViewPane() {
     " Export",
   ]);
   const editBtn = Global.el("button", { type: "button", class: "secondary-btn edit-toggle-btn", text: "Edit" });
-  top.appendChild(Global.el("div", { class: "trip-header-actions" }, [agendaLink, exportLink, archiveBtn, editBtn, deleteBtn]));
+  const actionBtns = [agendaLink, exportLink];
+  // Only once the trip has a city to fill from - the endpoint 400s
+  // otherwise, and there'd be nothing meaningful for the button to do yet.
+  if (currentTrip.city) {
+    actionBtns.push(
+      Global.el("button", {
+        type: "button",
+        class: "secondary-btn",
+        text: "Fill missing activity cities",
+        title: `Sets city to "${currentTrip.city}" on every activity in this trip that doesn't have one yet`,
+        onclick: async () => {
+          try {
+            const { updated } = await Global.fetchJSON(`${TRIPS_API}/${tripId}/fill-missing-cities`, { method: "POST" });
+            Global.showMessage(
+              updated > 0 ? `Filled city for ${updated} activit${updated === 1 ? "y" : "ies"}.` : "Nothing to fill - every activity already has a city.",
+              "success"
+            );
+            if (updated > 0) loadActivities();
+          } catch (err) {
+            Global.showMessage(err.message, "error");
+          }
+        },
+      })
+    );
+  }
+  actionBtns.push(archiveBtn, editBtn, deleteBtn);
+  top.appendChild(Global.el("div", { class: "trip-header-actions" }, actionBtns));
   pane.appendChild(top);
 
   const dateLabel = formatDateRange(currentTrip.start_date, currentTrip.end_date);
-  const fields = [viewField("Location", currentTrip.location), viewField("Dates", dateLabel || "Not set")].filter(Boolean);
+  const fields = [
+    viewField("Location", currentTrip.location),
+    viewField("City", currentTrip.city),
+    viewField("Dates", dateLabel || "Not set"),
+  ].filter(Boolean);
   pane.appendChild(Global.el("div", { class: "view-fields" }, fields));
 
   return pane;
@@ -89,12 +119,14 @@ function buildTripHeaderEditPane() {
   const pane = Global.el("div", { class: "edit-pane" });
 
   const locationInput = Global.el("input", { type: "text", value: currentTrip.location, required: "required" });
+  const cityInput = cityInputElement(currentTrip.city);
   const startInput = Global.el("input", { type: "date", value: Global.toISODate(currentTrip.start_date) });
   const endInput = Global.el("input", { type: "date", value: Global.toISODate(currentTrip.end_date) });
 
   pane.appendChild(
     Global.el("div", { class: "item-fields" }, [
       Global.el("div", { class: "field" }, [Global.el("label", { text: "Location" }), locationInput]),
+      Global.el("div", { class: "field" }, [Global.el("label", { text: "City" }), cityInput]),
       Global.el("div", { class: "field" }, [Global.el("label", { text: "Start date" }), startInput]),
       Global.el("div", { class: "field" }, [Global.el("label", { text: "End date" }), endInput]),
     ])
@@ -123,11 +155,13 @@ function buildTripHeaderEditPane() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             location: loc,
+            city: cityInput.value.trim() || null,
             start_date: Global.dateInputToISO(startInput.value),
             end_date: Global.dateInputToISO(endInput.value),
           }),
         });
         Global.showMessage("Trip saved.", "success");
+        loadCitiesCache(); // fire-and-forget - same reasoning as activity-shared.js's saves
         renderTripHeader();
         loadCoverage();
       } catch (err) {
@@ -594,10 +628,12 @@ async function init() {
   // <select> (the add form below, and every activity card/edit-pane) -
   // see activities.js's init for the same reasoning.
   await loadCategoriesCache();
+  await loadCitiesCache();
 
   initAttachActivityPicker();
   initAddActivityToggle(document.getElementById("add-activity-container"), {
     tripId,
+    tripCity: currentTrip.city,
     onCreated: () => {
       loadActivities();
       loadUnassociatedOptions();
