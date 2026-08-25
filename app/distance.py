@@ -14,10 +14,13 @@ the closest pair of cafes), many candidates against one fixed anchor
 everything else (a "nearby" lookup). See routers/activities.py's
 /distance-matrix endpoint for how callers actually reach this.
 
-No caching layer (yet) - addresses rarely change and this app's usage
-volume is low (personal, occasional trip planning), so a fresh call per
-request is simpler and cheap enough. Worth revisiting if that stops being
-true.
+This module only ever talks to Google for a pair (origin, destination,
+mode) the caller doesn't already have cached - see the ActivityDistance
+table (models.py) and crud.get_cached_distances/cache_distance. Caching is
+keyed and invalidated per app/crud.py's _invalidate_activity_distances
+(fires only when an activity's address or city actually changes), so a
+result is only ever re-fetched when it could genuinely be different, or
+the caller explicitly asks via force_refresh.
 """
 
 from typing import List, Optional

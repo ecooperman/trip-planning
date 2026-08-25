@@ -1040,6 +1040,23 @@ body.agenda-locked .agenda-entry-resize {
   font-style: italic;
 }
 
+/* Marks a mode's result as read from the cache rather than a live Google
+   call just now (see formatCombinedDistanceResult/modeResultFragment) -
+   deliberately quiet (this is a side note, not the headline number) but
+   still its own visual shape so it doesn't read as part of the distance
+   text itself. */
+.distance-cache-tag {
+  margin-left: 4px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--border);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
 /* "Distance to" on an activity's own view pane (see
    buildActivityDistancesSection in activity-shared.js) - a lighter nested
    version of .archived-section's collapsed-by-default look, since this

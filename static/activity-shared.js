@@ -834,12 +834,23 @@ function buildFilterableActivityPicker(getActivities, placeholder) {
   return { element: wrap, getSelectedIds: () => [...selectedActivityIds] };
 }
 
-function formatCombinedDistanceResult(entry, fromLabel, toLabel) {
-  const parts = [];
-  if (entry.walking && !entry.walking.skipped_reason) parts.push(`Walk ${entry.walking.distance_text} · ${entry.walking.duration_text}`);
-  if (entry.driving && !entry.driving.skipped_reason) parts.push(`Drive ${entry.driving.distance_text} · ${entry.driving.duration_text}`);
+// One mode's text ("Walk 2.4 km · 33 mins") plus, when it came from
+// ActivityDistance instead of a live Google call just now, a small
+// "cached" tag after it - lets you see at a glance which of these results
+// actually just spent an API call vs. were free (see distance.py's module
+// docstring on why that distinction exists at all).
+function modeResultFragment(label, modeInfo) {
+  const fragment = [`${label} ${modeInfo.distance_text} · ${modeInfo.duration_text}`];
+  if (modeInfo.from_cache) fragment.push(Global.el("span", { class: "distance-cache-tag", text: "cached" }));
+  return fragment;
+}
 
-  if (parts.length === 0) {
+function formatCombinedDistanceResult(entry, fromLabel, toLabel) {
+  const modeFragments = [];
+  if (entry.walking && !entry.walking.skipped_reason) modeFragments.push(modeResultFragment("Walk", entry.walking));
+  if (entry.driving && !entry.driving.skipped_reason) modeFragments.push(modeResultFragment("Drive", entry.driving));
+
+  if (modeFragments.length === 0) {
     // Both modes failed - same underlying reason either way (an address
     // problem affects both identically; "no route" for both is rarer but
     // possible), so just report one, whichever's present.
@@ -847,9 +858,14 @@ function formatCombinedDistanceResult(entry, fromLabel, toLabel) {
     const text = reason === "no address" ? "no address on file" : "no route found";
     return Global.el("li", { class: "distance-result-skipped", text: `${fromLabel} → ${toLabel}: ${text}` });
   }
+  const valueChildren = [];
+  modeFragments.forEach((fragment, i) => {
+    if (i > 0) valueChildren.push("  ·  ");
+    valueChildren.push(...fragment);
+  });
   return Global.el("li", {}, [
     Global.el("span", { class: "distance-result-names", text: `${fromLabel} → ${toLabel}` }),
-    Global.el("span", { class: "distance-result-value", text: parts.join("  ·  ") }),
+    Global.el("span", { class: "distance-result-value" }, valueChildren),
   ]);
 }
 

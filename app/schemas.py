@@ -340,6 +340,12 @@ class DistancePair(BaseModel):
     # one or both addresses, or there's genuinely no route for the given
     # mode - e.g. across water on foot).
     skipped_reason: Optional[str] = None
+    # True if this result was read from ActivityDistance rather than just
+    # spent on a live Google Distance Matrix call - None for a skipped pair,
+    # where the concept doesn't apply (a "no address" skip never reaches
+    # Google or the cache either way; a "no route found" pair is never
+    # cached at all, so it's freshly re-checked every time regardless).
+    from_cache: Optional[bool] = None
 
 
 class DistanceMatrixResponse(BaseModel):

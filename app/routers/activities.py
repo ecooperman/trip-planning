@@ -109,6 +109,7 @@ def distance_matrix(payload: schemas.DistanceMatrixRequest, db: Session = Depend
                     distance_text=row.distance_text,
                     duration_seconds=row.duration_seconds,
                     duration_text=row.duration_text,
+                    from_cache=True,
                 )
             )
 
@@ -150,6 +151,7 @@ def distance_matrix(payload: schemas.DistanceMatrixRequest, db: Session = Depend
                                 distance_text=result.distance_text,
                                 duration_seconds=result.duration_seconds,
                                 duration_text=result.duration_text,
+                                from_cache=False,
                             )
                         )
 
