@@ -942,6 +942,16 @@ body.agenda-locked .agenda-entry-resize {
   flex: 1;
 }
 
+/* Each side (source/target) holds two multiselects - the category filter
+   above the activity picker it narrows - see buildFilterableActivityPicker
+   in activity-shared.js. .multiselect itself is inline-block (theme.css),
+   so without this the two would sit side by side rather than stacked. */
+.distance-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 .distance-tool-actions {
   display: flex;
   align-items: center;

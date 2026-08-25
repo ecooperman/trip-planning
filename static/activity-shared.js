@@ -748,3 +748,240 @@ function initAddActivityToggle(container, { tripId = null, tripCity = null, onCr
     showBtn.classList.add("hidden");
   }
 }
+
+// --- distance comparison tool ("Compare distances") ------------------------
+//
+// Mounted on both activities.html (every activity) and trip.html (just
+// that trip's own activities) - built once here, entirely via JS (markup
+// and logic both), rather than duplicating this UI in two templates with
+// two near-identical page scripts behind them. See initDistanceTool at the
+// bottom for the actual mount call each page makes.
+//
+// One shared backend endpoint (POST /api/activities/distance-matrix - see
+// app/distance.py/routers/activities.py), driven by two independent,
+// both-required activity pickers - source and target, so either side can
+// hold one activity or several: distance from every source to every target
+// (e.g. "which of these 3 restaurants is closest to the show" - or run it
+// the other way, show as the lone source and the restaurants as targets,
+// to see the same comparison from that side instead). No shorthand for
+// "compare a set with itself" - target is always a real, separate
+// selection; picking the same activity on both sides isn't specially
+// prevented, it's just not a mode of its own (that pair's distance would
+// trivially be 0 anyway).
+// Real walking/driving distance via Google's Distance Matrix API, not a
+// guess - see distance.py's module docstring for why that matters here.
+
+function activityLabel(activity) {
+  return activity.city ? `${activity.name} — ${activity.city}` : activity.name;
+}
+
+// One side (source or target) of the tool: a category multiselect that
+// narrows a long activity list down (e.g. just cafes) before you pick from
+// it, plus the activity multiselect itself. The activity picker gets
+// rebuilt whenever the category filter changes - Global.buildMultiSelect
+// has no "update options" of its own, and previously-selected activities
+// that no longer match the new filter are dropped from the selection
+// rather than left selected-but-hidden.
+function buildFilterableActivityPicker(getActivities, placeholder) {
+  const wrap = Global.el("div", { class: "distance-picker" });
+  const categoryFilterMount = Global.el("div", { class: "distance-picker-category-filter" });
+  const activityMount = Global.el("div", { class: "distance-picker-activities" });
+  wrap.append(categoryFilterMount, activityMount);
+
+  let selectedCategoryIds = new Set();
+  let selectedActivityIds = new Set();
+
+  function poolActivities() {
+    const all = getActivities();
+    if (selectedCategoryIds.size === 0) return all;
+    return all.filter((a) => a.category_id && selectedCategoryIds.has(String(a.category_id)));
+  }
+
+  function renderActivityPicker() {
+    const pool = poolActivities();
+    const poolIds = new Set(pool.map((a) => a.id));
+    for (const id of selectedActivityIds) {
+      if (!poolIds.has(id)) selectedActivityIds.delete(id);
+    }
+    activityMount.innerHTML = "";
+    activityMount.appendChild(
+      Global.buildMultiSelect({
+        options: pool.map((a) => ({ value: a.id, label: activityLabel(a) })),
+        selected: [...selectedActivityIds],
+        placeholder,
+        onChange: (selected) => {
+          selectedActivityIds = new Set(selected.map(Number));
+        },
+      })
+    );
+  }
+
+  if (categories.length > 0) {
+    categoryFilterMount.appendChild(
+      Global.buildMultiSelect({
+        options: categories.map((c) => ({ value: c.id, label: c.name, color: c.color })),
+        selected: [],
+        placeholder: "All categories",
+        onChange: (selected) => {
+          selectedCategoryIds = new Set(selected.map(String));
+          renderActivityPicker();
+        },
+      })
+    );
+  }
+  renderActivityPicker();
+
+  return { element: wrap, getSelectedIds: () => [...selectedActivityIds] };
+}
+
+function formatCombinedDistanceResult(entry, fromLabel, toLabel) {
+  const parts = [];
+  if (entry.walking && !entry.walking.skipped_reason) parts.push(`Walk ${entry.walking.distance_text} · ${entry.walking.duration_text}`);
+  if (entry.driving && !entry.driving.skipped_reason) parts.push(`Drive ${entry.driving.distance_text} · ${entry.driving.duration_text}`);
+
+  if (parts.length === 0) {
+    // Both modes failed - same underlying reason either way (an address
+    // problem affects both identically; "no route" for both is rarer but
+    // possible), so just report one, whichever's present.
+    const reason = entry.walking?.skipped_reason || entry.driving?.skipped_reason;
+    const text = reason === "no address" ? "no address on file" : "no route found";
+    return Global.el("li", { class: "distance-result-skipped", text: `${fromLabel} → ${toLabel}: ${text}` });
+  }
+  return Global.el("li", {}, [
+    Global.el("span", { class: "distance-result-names", text: `${fromLabel} → ${toLabel}` }),
+    Global.el("span", { class: "distance-result-value", text: parts.join("  ·  ") }),
+  ]);
+}
+
+async function fetchDistancePairs(originIds, destinationIds, mode, forceRefresh) {
+  const { pairs } = await Global.fetchJSON(`${ACTIVITIES_API}/distance-matrix`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ origin_ids: originIds, destination_ids: destinationIds, mode, force_refresh: forceRefresh }),
+  });
+  return pairs;
+}
+
+async function runDistanceComparison({ sourcePicker, targetPicker, forceRefreshCheckbox, resultsEl, getActivities }) {
+  const sourceIds = sourcePicker.getSelectedIds();
+  const targetIds = targetPicker.getSelectedIds();
+  const activitiesById = Object.fromEntries(getActivities().map((a) => [a.id, a]));
+
+  if (sourceIds.length === 0) {
+    Global.showMessage("Select at least one source activity.", "error");
+    return;
+  }
+  if (targetIds.length === 0) {
+    Global.showMessage("Select at least one target activity.", "error");
+    return;
+  }
+
+  resultsEl.innerHTML = "";
+  resultsEl.appendChild(Global.el("p", { class: "note", text: "Calculating…" }));
+
+  try {
+    // Google's Distance Matrix (and this app's own endpoint) takes one mode
+    // per request - two parallel requests, then merged client-side, rather
+    // than a second round trip after seeing the first result.
+    const [walkingPairs, drivingPairs] = await Promise.all([
+      fetchDistancePairs(sourceIds, targetIds, "walking", forceRefreshCheckbox.checked),
+      fetchDistancePairs(sourceIds, targetIds, "driving", forceRefreshCheckbox.checked),
+    ]);
+
+    // Merged by exact (origin,destination) - both calls are driven by the
+    // same source/target id lists, so they always cover the same set of
+    // pairs; source and target are always separate selections (see the
+    // module comment above), so there's no "which direction do I even
+    // mean" ambiguity that would need resolving here.
+    const merged = new Map();
+    for (const [mode, pairs] of [["walking", walkingPairs], ["driving", drivingPairs]]) {
+      for (const pair of pairs) {
+        const key = `${pair.origin_id}:${pair.destination_id}`;
+        const entry = merged.get(key) || { origin_id: pair.origin_id, destination_id: pair.destination_id };
+        entry[mode] = pair;
+        merged.set(key, entry);
+      }
+    }
+    const combined = [...merged.values()];
+
+    const closenessOf = (entry) => {
+      if (entry.walking && !entry.walking.skipped_reason) return entry.walking.distance_meters;
+      if (entry.driving && !entry.driving.skipped_reason) return entry.driving.distance_meters;
+      return null;
+    };
+    const sortable = combined.filter((e) => closenessOf(e) !== null);
+    const skipped = combined.filter((e) => closenessOf(e) === null);
+    sortable.sort((a, b) => closenessOf(a) - closenessOf(b));
+
+    resultsEl.innerHTML = "";
+    if (sortable.length === 0 && skipped.length === 0) {
+      resultsEl.appendChild(Global.el("p", { class: "note", text: "Nothing to compare." }));
+      return;
+    }
+    const list = Global.el("ul", { class: "distance-result-list" });
+    for (const entry of [...sortable, ...skipped]) {
+      const fromLabel = activityLabel(activitiesById[entry.origin_id]);
+      const toLabel = activityLabel(activitiesById[entry.destination_id]);
+      list.appendChild(formatCombinedDistanceResult(entry, fromLabel, toLabel));
+    }
+    if (sortable.length) list.firstElementChild.classList.add("distance-result-closest");
+    resultsEl.appendChild(list);
+  } catch (err) {
+    resultsEl.innerHTML = "";
+    Global.showMessage(err.message, "error");
+  }
+}
+
+function buildDistanceComparisonTool(getActivities) {
+  const details = Global.el("details", { class: "archived-section", id: "distance-tool-section" });
+  details.append(Global.el("summary", {}, [Global.el("span", { text: "Compare distances" })]));
+
+  const body = Global.el("div", { class: "distance-tool-body" });
+  body.appendChild(
+    Global.el("p", {
+      class: "note",
+      text: "Pick source and target activities and get real walking and driving distances from each source to each target - e.g. from a show to a few candidate restaurants, or the other way around. Filter each list by category first to narrow a long list down (e.g. just cafes).",
+    })
+  );
+
+  const sourcePicker = buildFilterableActivityPicker(getActivities, "Select source activities");
+  const targetPicker = buildFilterableActivityPicker(getActivities, "Select target activities");
+  body.appendChild(
+    Global.el("div", { class: "field-row" }, [
+      Global.el("div", { class: "field" }, [Global.el("label", { text: "Source" }), sourcePicker.element]),
+      Global.el("div", { class: "field" }, [Global.el("label", { text: "Target" }), targetPicker.element]),
+    ])
+  );
+
+  const resultsEl = Global.el("div", { class: "distance-results" });
+  const forceRefreshCheckbox = Global.el("input", { type: "checkbox" });
+  const calculateBtn = Global.el("button", {
+    type: "button",
+    class: "save-btn",
+    text: "Calculate",
+    onclick: () => runDistanceComparison({ sourcePicker, targetPicker, forceRefreshCheckbox, resultsEl, getActivities }),
+  });
+  body.appendChild(
+    Global.el("div", { class: "distance-tool-actions" }, [
+      calculateBtn,
+      Global.el("label", { class: "distance-force-refresh-label" }, [forceRefreshCheckbox, "Force refresh (ignore cached results)"]),
+    ])
+  );
+  body.appendChild(resultsEl);
+
+  details.appendChild(body);
+  return details;
+}
+
+// mountId: the id of an empty <div> in the page's own template.
+// getActivities: () => Activity[] - a function, not a plain array, so a
+// later reload (a new activity added, the city filter changed, etc.)
+// updating whatever module-level array this closes over is automatically
+// picked up the next time a picker rebuilds, rather than needing this
+// whole tool re-mounted from scratch after every change on the page.
+function initDistanceTool(mountId, getActivities) {
+  const mount = document.getElementById(mountId);
+  if (!mount) return;
+  mount.innerHTML = "";
+  mount.appendChild(buildDistanceComparisonTool(getActivities));
+}

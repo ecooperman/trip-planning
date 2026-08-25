@@ -560,12 +560,18 @@ function placeActivityCard(activity, opts = {}) {
   return card;
 }
 
+// Kept around (not just a local inside loadActivities) so the distance
+// tool's getActivities() closure (see initDistanceTool in
+// activity-shared.js) always reads this trip's current activities,
+// without needing to re-mount the tool after every reload.
+let tripActivities = [];
+
 async function loadActivities() {
   for (const id of ["activities-list", "done-activities-list", "archived-activities-list"]) {
     document.getElementById(id).innerHTML = "";
   }
-  const activities = await Global.fetchJSON(`${TRIPS_API}/${tripId}/activities`);
-  for (const activity of activities) placeActivityCard(activity);
+  tripActivities = await Global.fetchJSON(`${TRIPS_API}/${tripId}/activities`);
+  for (const activity of tripActivities) placeActivityCard(activity);
   refreshActivityCounts();
 }
 
@@ -639,7 +645,12 @@ async function init() {
       loadUnassociatedOptions();
     },
   });
-  loadActivities();
+  await loadActivities();
+  // A getter, not the array itself - tripActivities gets reassigned (not
+  // mutated) on every reload, so the tool always reads whatever's current
+  // at rebuild time rather than a one-time snapshot from right now. Scoped
+  // to just this trip's own activities, unlike activities.html's instance.
+  initDistanceTool("distance-tool-mount", () => tripActivities);
 }
 
 init();

@@ -488,192 +488,11 @@ function initActivitySort() {
   });
 }
 
-// --- distance tool ---------------------------------------------------------
-//
-// One shared backend endpoint (POST /api/activities/distance-matrix - see
-// app/distance.py/routers/activities.py), driven by two independent
-// multiselects - source and target, both arrays, so either side can hold
-// one activity or several:
-//  - Target left blank: full pairwise distances among the source
-//    activities compared with each other (e.g. "which 2 of these 5 cafes
-//    are closest to each other").
-//  - Target given: distance from every source to every target (e.g. "which
-//    of these 3 restaurants is closest to the show" - or run it the other
-//    way, show as the lone source and the restaurants as targets, to see
-//    the same comparison from that side instead).
-// Real walking/driving distance via Google's Distance Matrix API, not a
-// guess - see distance.py's module docstring for why that matters here.
-let distanceSourceIds = new Set();
-let distanceTargetIds = new Set();
-
-function activityLabel(activity) {
-  return activity.city ? `${activity.name} — ${activity.city}` : activity.name;
-}
-
-function initDistanceTool() {
-  const sourceMount = document.getElementById("distance-source-mount");
-  const targetMount = document.getElementById("distance-target-mount");
-  sourceMount.innerHTML = "";
-  targetMount.innerHTML = "";
-
-  if (loadedActivities.length === 0) return;
-
-  const options = loadedActivities.map((a) => ({ value: a.id, label: activityLabel(a) }));
-  sourceMount.appendChild(
-    Global.buildMultiSelect({
-      options,
-      selected: [...distanceSourceIds],
-      placeholder: "Select source activities",
-      onChange: (selected) => {
-        distanceSourceIds = new Set(selected.map(Number));
-      },
-    })
-  );
-  targetMount.appendChild(
-    Global.buildMultiSelect({
-      options,
-      selected: [...distanceTargetIds],
-      placeholder: "Same as source",
-      onChange: (selected) => {
-        distanceTargetIds = new Set(selected.map(Number));
-      },
-    })
-  );
-
-  document.getElementById("distance-calculate-btn").addEventListener("click", runDistanceComparison);
-}
-
-// Full-pairwise mode returns both directions (A→B and B→A) - walking/
-// driving distance isn't always symmetric (one-way streets, etc.), so
-// showing both as if they were two different facts would be more confusing
-// than useful here - keep one entry per unordered pair. Prefer whichever
-// direction actually resolved rather than always picking (say) the
-// lower-id-first one regardless - Google's routing can itself be
-// asymmetric (a path only walkable one way), and always keeping the same
-// arbitrary direction could throw away the one side that actually had a
-// real result in favor of a "no route found" from the other.
-function dedupeUnorderedPairs(pairs) {
-  const byPairKey = new Map();
-  for (const pair of pairs) {
-    const key = [pair.origin_id, pair.destination_id].sort((a, b) => a - b).join(":");
-    const existing = byPairKey.get(key);
-    if (!existing || (existing.skipped_reason && !pair.skipped_reason)) byPairKey.set(key, pair);
-  }
-  return [...byPairKey.values()];
-}
-
-function formatCombinedResult(entry, fromLabel, toLabel) {
-  const parts = [];
-  if (entry.walking && !entry.walking.skipped_reason) parts.push(`Walk ${entry.walking.distance_text} · ${entry.walking.duration_text}`);
-  if (entry.driving && !entry.driving.skipped_reason) parts.push(`Drive ${entry.driving.distance_text} · ${entry.driving.duration_text}`);
-
-  if (parts.length === 0) {
-    // Both modes failed - same underlying reason either way (an address
-    // problem affects both identically; "no route" for both is rarer but
-    // possible), so just report one, whichever's present.
-    const reason = entry.walking?.skipped_reason || entry.driving?.skipped_reason;
-    const text = reason === "no address" ? "no address on file" : "no route found";
-    return Global.el("li", { class: "distance-result-skipped", text: `${fromLabel} → ${toLabel}: ${text}` });
-  }
-  return Global.el("li", {}, [
-    Global.el("span", { class: "distance-result-names", text: `${fromLabel} → ${toLabel}` }),
-    Global.el("span", { class: "distance-result-value", text: parts.join("  ·  ") }),
-  ]);
-}
-
-async function fetchDistancePairs(originIds, destinationIds, mode, forceRefresh) {
-  const { pairs } = await Global.fetchJSON(`${ACTIVITIES_API}/distance-matrix`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ origin_ids: originIds, destination_ids: destinationIds, mode, force_refresh: forceRefresh }),
-  });
-  return pairs;
-}
-
-async function runDistanceComparison() {
-  const resultsEl = document.getElementById("distance-results");
-  const forceRefresh = document.getElementById("distance-force-refresh").checked;
-  const sourceIds = [...distanceSourceIds];
-  // Blank target = compare the source activities with each other - the
-  // same activities on both sides, not a separate selection to fill in
-  // twice.
-  const isSelfCompare = distanceTargetIds.size === 0;
-  const targetIds = isSelfCompare ? sourceIds : [...distanceTargetIds];
-  const activitiesById = Object.fromEntries(loadedActivities.map((a) => [a.id, a]));
-
-  if (sourceIds.length === 0) {
-    Global.showMessage("Select at least one source activity.", "error");
-    return;
-  }
-  if (isSelfCompare && sourceIds.length < 2) {
-    Global.showMessage("Select at least 2 source activities to compare with each other, or fill in a target.", "error");
-    return;
-  }
-
-  resultsEl.innerHTML = "";
-  resultsEl.appendChild(Global.el("p", { class: "note", text: "Calculating…" }));
-
-  try {
-    // Google's Distance Matrix (and this app's own endpoint) takes one mode
-    // per request - two parallel requests, then merged client-side, rather
-    // than a second round trip after seeing the first result.
-    let [walkingPairs, drivingPairs] = await Promise.all([
-      fetchDistancePairs(sourceIds, targetIds, "walking", forceRefresh),
-      fetchDistancePairs(sourceIds, targetIds, "driving", forceRefresh),
-    ]);
-    // Only collapse A→B/B→A into one entry for the self-compare case
-    // (direction genuinely doesn't matter for "are these close to each
-    // other") - an explicit target means direction was the point, so an
-    // explicit source/target overlap still shows both sides rather than
-    // silently picking one.
-    if (isSelfCompare) {
-      walkingPairs = dedupeUnorderedPairs(walkingPairs);
-      drivingPairs = dedupeUnorderedPairs(drivingPairs);
-    }
-
-    // Merged by unordered pair, not exact (origin,destination) - the two
-    // modes' own dedup passes above can independently land on opposite
-    // directions for the same pair (walking resolved A→B, driving only
-    // resolved B→A), so matching on the literal id order would wrongly
-    // treat those as two different pairs instead of one entry with both.
-    const merged = new Map();
-    for (const [mode, pairs] of [["walking", walkingPairs], ["driving", drivingPairs]]) {
-      for (const pair of pairs) {
-        const key = [pair.origin_id, pair.destination_id].sort((a, b) => a - b).join(":");
-        const entry = merged.get(key) || { origin_id: pair.origin_id, destination_id: pair.destination_id };
-        entry[mode] = pair;
-        merged.set(key, entry);
-      }
-    }
-    const combined = [...merged.values()];
-
-    const closenessOf = (entry) => {
-      if (entry.walking && !entry.walking.skipped_reason) return entry.walking.distance_meters;
-      if (entry.driving && !entry.driving.skipped_reason) return entry.driving.distance_meters;
-      return null;
-    };
-    const sortable = combined.filter((e) => closenessOf(e) !== null);
-    const skipped = combined.filter((e) => closenessOf(e) === null);
-    sortable.sort((a, b) => closenessOf(a) - closenessOf(b));
-
-    resultsEl.innerHTML = "";
-    if (sortable.length === 0 && skipped.length === 0) {
-      resultsEl.appendChild(Global.el("p", { class: "note", text: "Nothing to compare." }));
-      return;
-    }
-    const list = Global.el("ul", { class: "distance-result-list" });
-    for (const entry of [...sortable, ...skipped]) {
-      const fromLabel = activityLabel(activitiesById[entry.origin_id]);
-      const toLabel = activityLabel(activitiesById[entry.destination_id]);
-      list.appendChild(formatCombinedResult(entry, fromLabel, toLabel));
-    }
-    if (sortable.length) list.firstElementChild.classList.add("distance-result-closest");
-    resultsEl.appendChild(list);
-  } catch (err) {
-    resultsEl.innerHTML = "";
-    Global.showMessage(err.message, "error");
-  }
-}
+// The distance comparison tool ("Compare distances") now lives in
+// activity-shared.js (buildDistanceComparisonTool/initDistanceTool) - it's
+// mounted on trip.html too, not just here, so the whole thing (markup and
+// logic both) needed to be shared rather than living in this page's own
+// script. See this page's own initDistanceTool(...) call in init() below.
 
 const pageParams = new URLSearchParams(window.location.search);
 const prefillParam = pageParams.get("prefill");
@@ -717,9 +536,10 @@ async function init() {
   if (prefill) Global.showMessage(`Filled in from ${prefill.url ? Global.domainFromUrl(prefill.url) || "clipped page" : "clipped page"} - review and save.`, "success");
 
   await loadActivities();
-  // After loadActivities, not before - the candidates/anchor pickers are
-  // built from loadedActivities, which loadActivities is what populates.
-  initDistanceTool();
+  // A getter, not the array itself - loadedActivities gets reassigned (not
+  // mutated) on every reload, so the tool always reads whatever's current
+  // at rebuild time rather than a one-time snapshot from right now.
+  initDistanceTool("distance-tool-mount", () => loadedActivities);
 }
 
 init().catch((err) => Global.showMessage(err.message, "error"));
