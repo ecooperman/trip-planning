@@ -261,6 +261,8 @@ function buildActivityViewPane(card, activity, { onChanged, onDeleted, onUnlink,
     pane.appendChild(buildActivityScrapeSection(card, activity, { onChanged, onDeleted, onUnlink, showTripBadge }));
   }
 
+  pane.appendChild(buildActivityDistancesSection(activity));
+
   const actions = Global.el("div", { class: "item-actions" });
 
   const deleteBtn = Global.el("button", {
@@ -523,6 +525,60 @@ function buildActivityEditPane(card, activity, { onChanged, onDeleted, onUnlink,
   actions.append(cancelBtn, saveBtn);
   pane.appendChild(actions);
   return pane;
+}
+
+// "Distance to" - every real distance already calculated involving this
+// activity (see Compare distances on activities.html), read straight from
+// the cache (GET /api/activities/{id}/distances never calls Google
+// itself) so a comparison you've already run stays visible on the
+// activities it was about, without having to re-run it or remember which
+// page you calculated it from. Nested <details>, lazy-loaded on first
+// open (not fetched the moment this card renders) - a list of activities
+// builds every card's view pane up front, and most cards' distance
+// sections are never opened, so fetching for all of them eagerly would be
+// pure waste.
+function buildActivityDistancesSection(activity) {
+  const details = Global.el("details", { class: "activity-distances-section" });
+  const body = Global.el("div", { class: "activity-distances-body" });
+  details.append(Global.el("summary", { text: "Distance to other activities" }), body);
+
+  let loaded = false;
+  details.addEventListener("toggle", async () => {
+    if (!details.open || loaded) return;
+    loaded = true;
+    body.appendChild(Global.el("p", { class: "note", text: "Loading…" }));
+    try {
+      const entries = await Global.fetchJSON(`${ACTIVITIES_API}/${activity.id}/distances`);
+      body.innerHTML = "";
+      if (entries.length === 0) {
+        body.appendChild(
+          Global.el("p", { class: "note", text: 'Nothing calculated yet - use "Compare distances" on the Activities page.' })
+        );
+        return;
+      }
+      const list = Global.el("ul", { class: "distance-result-list" });
+      for (const entry of entries) {
+        const otherLabel = entry.other_activity_city ? `${entry.other_activity_name} — ${entry.other_activity_city}` : entry.other_activity_name;
+        const arrow = entry.direction === "to" ? "→" : "←";
+        const parts = [];
+        if (entry.walking) parts.push(`Walk ${entry.walking.distance_text} · ${entry.walking.duration_text}`);
+        if (entry.driving) parts.push(`Drive ${entry.driving.distance_text} · ${entry.driving.duration_text}`);
+        list.appendChild(
+          Global.el("li", {}, [
+            Global.el("span", { class: "distance-result-names", text: `${arrow} ${otherLabel}` }),
+            Global.el("span", { class: "distance-result-value", text: parts.join("  ·  ") }),
+          ])
+        );
+      }
+      body.appendChild(list);
+    } catch (err) {
+      body.innerHTML = "";
+      body.appendChild(Global.el("p", { class: "note", text: `Couldn't load: ${err.message}` }));
+      loaded = false; // let a retry (collapse + re-expand) try again rather than getting stuck empty
+    }
+  });
+
+  return details;
 }
 
 function buildActivityScrapeSection(card, activity, { onChanged, onDeleted, onUnlink, showTripBadge }) {

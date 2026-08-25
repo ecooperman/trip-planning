@@ -172,6 +172,42 @@ def update_activity(activity_id: int, updates: schemas.ActivityUpdate, db: Sessi
     return activity
 
 
+@router.get("/{activity_id}/distances", response_model=List[schemas.ActivityDistanceEntry])
+def get_activity_distances(activity_id: int, db: Session = Depends(get_db)):
+    """Every distance already calculated involving this activity (see
+    Compare distances on activities.html) - reads straight from the cache
+    (ActivityDistance), never calls Google itself. Shown on the activity's
+    own card so a comparison you've already run stays visible without
+    having to re-run it or remember which page you calculated it from."""
+    if crud.get_activity(db, activity_id) is None:
+        raise HTTPException(status_code=404, detail="Activity not found")
+
+    outbound, inbound = crud.get_activity_distance_rows(db, activity_id)
+    entries: Dict[tuple, schemas.ActivityDistanceEntry] = {}
+
+    def add_row(row, direction: str, other_id: int):
+        key = (other_id, direction)
+        entry = entries.get(key)
+        if entry is None:
+            other = crud.get_activity(db, other_id)
+            entry = schemas.ActivityDistanceEntry(
+                other_activity_id=other_id,
+                other_activity_name=other.name if other else "Deleted activity",
+                other_activity_city=other.city if other else None,
+                direction=direction,
+            )
+            entries[key] = entry
+        mode_info = schemas.DistanceModeInfo(distance_text=row.distance_text, duration_text=row.duration_text)
+        setattr(entry, row.mode, mode_info)
+
+    for row in outbound:
+        add_row(row, "to", row.destination_activity_id)
+    for row in inbound:
+        add_row(row, "from", row.origin_activity_id)
+
+    return list(entries.values())
+
+
 @router.delete("/{activity_id}")
 def delete_activity(activity_id: int, db: Session = Depends(get_db)):
     ok = crud.delete_activity(db, activity_id)

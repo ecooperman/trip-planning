@@ -344,3 +344,26 @@ class DistancePair(BaseModel):
 
 class DistanceMatrixResponse(BaseModel):
     pairs: List[DistancePair]
+
+
+class DistanceModeInfo(BaseModel):
+    distance_text: str
+    duration_text: str
+
+
+class ActivityDistanceEntry(BaseModel):
+    """One cached distance between this activity and another - see
+    GET /api/activities/{id}/distances. direction is "to" (this activity
+    was the origin when it was computed) or "from" (this activity was the
+    destination) - shown separately rather than merged, since which
+    direction got cached depends on how the comparison was run (a
+    many-candidates-vs-one-anchor comparison, for instance, only ever
+    caches candidates -> anchor, never the reverse) and isn't necessarily
+    the same distance/time either way (one-way streets, etc.)."""
+
+    other_activity_id: int
+    other_activity_name: str
+    other_activity_city: Optional[str] = None
+    direction: Literal["to", "from"]
+    walking: Optional[DistanceModeInfo] = None
+    driving: Optional[DistanceModeInfo] = None

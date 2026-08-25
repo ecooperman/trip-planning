@@ -301,6 +301,16 @@ def get_cached_distances(db: Session, origin_ids: List[int], destination_ids: Li
     return {(row.origin_activity_id, row.destination_activity_id): row for row in rows}
 
 
+def get_activity_distance_rows(db: Session, activity_id: int):
+    """Every cached distance row involving this activity, in either
+    direction - (outbound rows, inbound rows). See
+    routers/activities.py's /distances endpoint, which turns these into
+    one entry per (other activity, direction)."""
+    outbound = db.query(models.ActivityDistance).filter(models.ActivityDistance.origin_activity_id == activity_id).all()
+    inbound = db.query(models.ActivityDistance).filter(models.ActivityDistance.destination_activity_id == activity_id).all()
+    return outbound, inbound
+
+
 def cache_distance(db: Session, origin_id: int, destination_id: int, mode: str, result):
     """Upsert - a later comparison that happens to re-fetch a pair already
     cached (see the router's rectangular-sub-grid re-fetch) just refreshes

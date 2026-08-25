@@ -1024,6 +1024,45 @@ body.agenda-locked .agenda-entry-resize {
   font-style: italic;
 }
 
+/* "Distance to" on an activity's own view pane (see
+   buildActivityDistancesSection in activity-shared.js) - a lighter nested
+   version of .archived-section's collapsed-by-default look, since this
+   already lives inside an expanded card rather than being a top-level
+   page section. */
+.activity-distances-section {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.activity-distances-section summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  list-style: none;
+}
+
+.activity-distances-section summary::-webkit-details-marker {
+  display: none;
+}
+
+.activity-distances-section summary::before {
+  content: "▸ ";
+}
+
+.activity-distances-section[open] summary::before {
+  content: "▾ ";
+}
+
+.activity-distances-body {
+  margin-top: 10px;
+}
+
+.activity-distances-body .note {
+  margin: 0;
+}
+
 /* The whole summary row is tinted with the category's color, rather than
    just a left-border accent or a separate badge - see the comment in
    activity-shared.js. --cat-text-color (also set there) is a per-category
