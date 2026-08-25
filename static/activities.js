@@ -491,41 +491,54 @@ function initActivitySort() {
 // --- distance tool ---------------------------------------------------------
 //
 // One shared backend endpoint (POST /api/activities/distance-matrix - see
-// app/distance.py/routers/activities.py) behind two modes, picked purely by
-// whether an anchor is chosen:
-//  - No anchor: full pairwise distances among the selected candidates (e.g.
-//    "which 2 of these 5 cafes are closest to each other").
-//  - An anchor selected: distance from every OTHER candidate to just that
-//    one (e.g. "which of these 3 restaurants is closest to the show").
+// app/distance.py/routers/activities.py), driven by two independent
+// multiselects - source and target, both arrays, so either side can hold
+// one activity or several:
+//  - Target left blank: full pairwise distances among the source
+//    activities compared with each other (e.g. "which 2 of these 5 cafes
+//    are closest to each other").
+//  - Target given: distance from every source to every target (e.g. "which
+//    of these 3 restaurants is closest to the show" - or run it the other
+//    way, show as the lone source and the restaurants as targets, to see
+//    the same comparison from that side instead).
 // Real walking/driving distance via Google's Distance Matrix API, not a
 // guess - see distance.py's module docstring for why that matters here.
-let distanceCandidateIds = new Set();
+let distanceSourceIds = new Set();
+let distanceTargetIds = new Set();
 
 function activityLabel(activity) {
   return activity.city ? `${activity.name} — ${activity.city}` : activity.name;
 }
 
 function initDistanceTool() {
-  const candidatesMount = document.getElementById("distance-candidates-mount");
-  const anchorSelect = document.getElementById("distance-anchor-select");
-  candidatesMount.innerHTML = "";
-  anchorSelect.innerHTML = '<option value="">None - compare candidates with each other</option>';
+  const sourceMount = document.getElementById("distance-source-mount");
+  const targetMount = document.getElementById("distance-target-mount");
+  sourceMount.innerHTML = "";
+  targetMount.innerHTML = "";
 
   if (loadedActivities.length === 0) return;
 
-  const widget = Global.buildMultiSelect({
-    options: loadedActivities.map((a) => ({ value: a.id, label: activityLabel(a) })),
-    selected: [...distanceCandidateIds],
-    placeholder: "Select activities",
-    onChange: (selected) => {
-      distanceCandidateIds = new Set(selected.map(Number));
-    },
-  });
-  candidatesMount.appendChild(widget);
-
-  for (const activity of loadedActivities) {
-    anchorSelect.appendChild(Global.el("option", { value: String(activity.id), text: activityLabel(activity) }));
-  }
+  const options = loadedActivities.map((a) => ({ value: a.id, label: activityLabel(a) }));
+  sourceMount.appendChild(
+    Global.buildMultiSelect({
+      options,
+      selected: [...distanceSourceIds],
+      placeholder: "Select source activities",
+      onChange: (selected) => {
+        distanceSourceIds = new Set(selected.map(Number));
+      },
+    })
+  );
+  targetMount.appendChild(
+    Global.buildMultiSelect({
+      options,
+      selected: [...distanceTargetIds],
+      placeholder: "Same as source",
+      onChange: (selected) => {
+        distanceTargetIds = new Set(selected.map(Number));
+      },
+    })
+  );
 
   document.getElementById("distance-calculate-btn").addEventListener("click", runDistanceComparison);
 }
@@ -579,19 +592,21 @@ async function fetchDistancePairs(originIds, destinationIds, mode, forceRefresh)
 
 async function runDistanceComparison() {
   const resultsEl = document.getElementById("distance-results");
-  const anchorValue = document.getElementById("distance-anchor-select").value;
-  const anchorId = anchorValue ? Number(anchorValue) : null;
   const forceRefresh = document.getElementById("distance-force-refresh").checked;
-  const candidateIds = [...distanceCandidateIds].filter((id) => id !== anchorId);
+  const sourceIds = [...distanceSourceIds];
+  // Blank target = compare the source activities with each other - the
+  // same activities on both sides, not a separate selection to fill in
+  // twice.
+  const isSelfCompare = distanceTargetIds.size === 0;
+  const targetIds = isSelfCompare ? sourceIds : [...distanceTargetIds];
   const activitiesById = Object.fromEntries(loadedActivities.map((a) => [a.id, a]));
-  const destinationIds = anchorId ? [anchorId] : candidateIds;
 
-  if (candidateIds.length === 0) {
-    Global.showMessage("Select at least one candidate activity.", "error");
+  if (sourceIds.length === 0) {
+    Global.showMessage("Select at least one source activity.", "error");
     return;
   }
-  if (!anchorId && candidateIds.length < 2) {
-    Global.showMessage("Select at least 2 candidates to compare against each other, or pick something to compare against.", "error");
+  if (isSelfCompare && sourceIds.length < 2) {
+    Global.showMessage("Select at least 2 source activities to compare with each other, or fill in a target.", "error");
     return;
   }
 
@@ -603,10 +618,15 @@ async function runDistanceComparison() {
     // per request - two parallel requests, then merged client-side, rather
     // than a second round trip after seeing the first result.
     let [walkingPairs, drivingPairs] = await Promise.all([
-      fetchDistancePairs(candidateIds, destinationIds, "walking", forceRefresh),
-      fetchDistancePairs(candidateIds, destinationIds, "driving", forceRefresh),
+      fetchDistancePairs(sourceIds, targetIds, "walking", forceRefresh),
+      fetchDistancePairs(sourceIds, targetIds, "driving", forceRefresh),
     ]);
-    if (!anchorId) {
+    // Only collapse A→B/B→A into one entry for the self-compare case
+    // (direction genuinely doesn't matter for "are these close to each
+    // other") - an explicit target means direction was the point, so an
+    // explicit source/target overlap still shows both sides rather than
+    // silently picking one.
+    if (isSelfCompare) {
       walkingPairs = dedupeUnorderedPairs(walkingPairs);
       drivingPairs = dedupeUnorderedPairs(drivingPairs);
     }
