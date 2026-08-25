@@ -57,7 +57,11 @@ function buildTripViewPane(card, trip) {
   const pane = Global.el("div", { class: "view-pane" });
 
   const dateLabel = formatDateRange(trip.start_date, trip.end_date);
-  const fields = [viewField("Location", trip.location), viewField("Dates", dateLabel || "Not set")].filter(Boolean);
+  const fields = [
+    viewField("Location", trip.location),
+    viewField("City", trip.city),
+    viewField("Dates", dateLabel || "Not set"),
+  ].filter(Boolean);
   pane.appendChild(Global.el("div", { class: "view-fields" }, fields));
 
   pane.appendChild(
@@ -108,12 +112,14 @@ function buildTripEditPane(card, trip) {
   const pane = Global.el("div", { class: "edit-pane" });
 
   const locationInput = Global.el("input", { type: "text", value: trip.location, required: "required" });
+  const cityInput = cityInputElement(trip.city);
   const startInput = Global.el("input", { type: "date", value: Global.toISODate(trip.start_date) });
   const endInput = Global.el("input", { type: "date", value: Global.toISODate(trip.end_date) });
 
   pane.appendChild(
     Global.el("div", { class: "item-fields" }, [
       Global.el("div", { class: "field" }, [Global.el("label", { text: "Location" }), locationInput]),
+      Global.el("div", { class: "field" }, [Global.el("label", { text: "City" }), cityInput]),
       Global.el("div", { class: "field" }, [Global.el("label", { text: "Start date" }), startInput]),
       Global.el("div", { class: "field" }, [Global.el("label", { text: "End date" }), endInput]),
     ])
@@ -146,11 +152,13 @@ function buildTripEditPane(card, trip) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             location,
+            city: cityInput.value.trim() || null,
             start_date: Global.dateInputToISO(startInput.value),
             end_date: Global.dateInputToISO(endInput.value),
           }),
         });
         Global.showMessage(`Saved "${location}".`, "success");
+        loadCitiesCache(); // fire-and-forget - picks up a newly-typed city for the shared datalist
         card.remove();
         placeTripCard(updated, { expanded: true });
       } catch (err) {
@@ -199,11 +207,15 @@ function initAddTripForm() {
   const showBtn = Global.el("button", { type: "button", class: "add-toggle", text: "+ Add Trip" });
 
   const locationInput = Global.el("input", { type: "text", required: "required", placeholder: "e.g. Paris, France" });
+  const cityInput = cityInputElement();
   const startInput = Global.el("input", { type: "date" });
   const endInput = Global.el("input", { type: "date" });
 
   const form = Global.el("form", { class: "add-card hidden" }, [
-    Global.el("div", { class: "field" }, [Global.el("label", { text: "Location *" }), locationInput]),
+    Global.el("div", { class: "field-row" }, [
+      Global.el("div", { class: "field" }, [Global.el("label", { text: "Location *" }), locationInput]),
+      Global.el("div", { class: "field" }, [Global.el("label", { text: "City" }), cityInput]),
+    ]),
     Global.el("div", { class: "field-row" }, [
       Global.el("div", { class: "field" }, [Global.el("label", { text: "Start date" }), startInput]),
       Global.el("div", { class: "field" }, [Global.el("label", { text: "End date" }), endInput]),
@@ -240,6 +252,7 @@ function initAddTripForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           location,
+          city: cityInput.value.trim() || null,
           start_date: Global.dateInputToISO(startInput.value),
           end_date: Global.dateInputToISO(endInput.value),
         }),
@@ -248,6 +261,7 @@ function initAddTripForm() {
       form.classList.add("hidden");
       showBtn.classList.remove("hidden");
       Global.showMessage(`Added "${location}".`, "success");
+      loadCitiesCache(); // fire-and-forget - same reasoning as the edit-pane save above
       placeTripCard(created, { expanded: true });
       refreshCounts();
     } catch (err) {
@@ -258,5 +272,15 @@ function initAddTripForm() {
   container.append(showBtn, form);
 }
 
-initAddTripForm();
-loadTrips().catch((err) => Global.showMessage(err.message, "error"));
+async function init() {
+  // Loaded before initAddTripForm/loadTrips build any city <input> -
+  // otherwise the datalist those inputs reference wouldn't exist yet (not
+  // strictly broken - the browser resolves list="..." dynamically once the
+  // <datalist> shows up - but this way suggestions are ready immediately
+  // rather than only after this fetch resolves).
+  await loadCitiesCache();
+  initAddTripForm();
+  await loadTrips();
+}
+
+init().catch((err) => Global.showMessage(err.message, "error"));

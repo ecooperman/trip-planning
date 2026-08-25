@@ -530,25 +530,61 @@ function initDistanceTool() {
   document.getElementById("distance-calculate-btn").addEventListener("click", runDistanceComparison);
 }
 
-function formatDistancePair(pair, fromLabel, toLabel) {
-  if (pair.skipped_reason) {
-    const reason = pair.skipped_reason === "no address" ? "no address on file" : "no route found";
-    return Global.el("li", { class: "distance-result-skipped", text: `${fromLabel} → ${toLabel}: ${reason}` });
+// Full-pairwise mode returns both directions (A→B and B→A) - walking/
+// driving distance isn't always symmetric (one-way streets, etc.), so
+// showing both as if they were two different facts would be more confusing
+// than useful here - keep one entry per unordered pair. Prefer whichever
+// direction actually resolved rather than always picking (say) the
+// lower-id-first one regardless - Google's routing can itself be
+// asymmetric (a path only walkable one way), and always keeping the same
+// arbitrary direction could throw away the one side that actually had a
+// real result in favor of a "no route found" from the other.
+function dedupeUnorderedPairs(pairs) {
+  const byPairKey = new Map();
+  for (const pair of pairs) {
+    const key = [pair.origin_id, pair.destination_id].sort((a, b) => a - b).join(":");
+    const existing = byPairKey.get(key);
+    if (!existing || (existing.skipped_reason && !pair.skipped_reason)) byPairKey.set(key, pair);
+  }
+  return [...byPairKey.values()];
+}
+
+function formatCombinedResult(entry, fromLabel, toLabel) {
+  const parts = [];
+  if (entry.walking && !entry.walking.skipped_reason) parts.push(`Walk ${entry.walking.distance_text} · ${entry.walking.duration_text}`);
+  if (entry.driving && !entry.driving.skipped_reason) parts.push(`Drive ${entry.driving.distance_text} · ${entry.driving.duration_text}`);
+
+  if (parts.length === 0) {
+    // Both modes failed - same underlying reason either way (an address
+    // problem affects both identically; "no route" for both is rarer but
+    // possible), so just report one, whichever's present.
+    const reason = entry.walking?.skipped_reason || entry.driving?.skipped_reason;
+    const text = reason === "no address" ? "no address on file" : "no route found";
+    return Global.el("li", { class: "distance-result-skipped", text: `${fromLabel} → ${toLabel}: ${text}` });
   }
   return Global.el("li", {}, [
     Global.el("span", { class: "distance-result-names", text: `${fromLabel} → ${toLabel}` }),
-    Global.el("span", { class: "distance-result-value", text: `${pair.distance_text} · ${pair.duration_text}` }),
+    Global.el("span", { class: "distance-result-value", text: parts.join("  ·  ") }),
   ]);
+}
+
+async function fetchDistancePairs(originIds, destinationIds, mode, forceRefresh) {
+  const { pairs } = await Global.fetchJSON(`${ACTIVITIES_API}/distance-matrix`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ origin_ids: originIds, destination_ids: destinationIds, mode, force_refresh: forceRefresh }),
+  });
+  return pairs;
 }
 
 async function runDistanceComparison() {
   const resultsEl = document.getElementById("distance-results");
   const anchorValue = document.getElementById("distance-anchor-select").value;
   const anchorId = anchorValue ? Number(anchorValue) : null;
-  const mode = document.getElementById("distance-mode-select").value;
   const forceRefresh = document.getElementById("distance-force-refresh").checked;
   const candidateIds = [...distanceCandidateIds].filter((id) => id !== anchorId);
   const activitiesById = Object.fromEntries(loadedActivities.map((a) => [a.id, a]));
+  const destinationIds = anchorId ? [anchorId] : candidateIds;
 
   if (candidateIds.length === 0) {
     Global.showMessage("Select at least one candidate activity.", "error");
@@ -563,38 +599,42 @@ async function runDistanceComparison() {
   resultsEl.appendChild(Global.el("p", { class: "note", text: "Calculating…" }));
 
   try {
-    const body = anchorId
-      ? { origin_ids: candidateIds, destination_ids: [anchorId], mode, force_refresh: forceRefresh }
-      : { origin_ids: candidateIds, destination_ids: candidateIds, mode, force_refresh: forceRefresh };
-    const { pairs } = await Global.fetchJSON(`${ACTIVITIES_API}/distance-matrix`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-
-    // Full-pairwise mode returns both directions (A→B and B→A) - walking/
-    // driving distance isn't always symmetric (one-way streets, etc.), so
-    // showing both as if they were two different facts would be more
-    // confusing than useful here - keep one entry per unordered pair.
-    // Prefer whichever direction actually resolved rather than always
-    // picking (say) the lower-id-first one regardless - Google's routing
-    // can itself be asymmetric (a path only walkable one way), and always
-    // keeping the same arbitrary direction could throw away the one side
-    // that actually had a real result in favor of a "no route found" from
-    // the other.
-    let deduped = pairs;
+    // Google's Distance Matrix (and this app's own endpoint) takes one mode
+    // per request - two parallel requests, then merged client-side, rather
+    // than a second round trip after seeing the first result.
+    let [walkingPairs, drivingPairs] = await Promise.all([
+      fetchDistancePairs(candidateIds, destinationIds, "walking", forceRefresh),
+      fetchDistancePairs(candidateIds, destinationIds, "driving", forceRefresh),
+    ]);
     if (!anchorId) {
-      const byPairKey = new Map();
+      walkingPairs = dedupeUnorderedPairs(walkingPairs);
+      drivingPairs = dedupeUnorderedPairs(drivingPairs);
+    }
+
+    // Merged by unordered pair, not exact (origin,destination) - the two
+    // modes' own dedup passes above can independently land on opposite
+    // directions for the same pair (walking resolved A→B, driving only
+    // resolved B→A), so matching on the literal id order would wrongly
+    // treat those as two different pairs instead of one entry with both.
+    const merged = new Map();
+    for (const [mode, pairs] of [["walking", walkingPairs], ["driving", drivingPairs]]) {
       for (const pair of pairs) {
         const key = [pair.origin_id, pair.destination_id].sort((a, b) => a - b).join(":");
-        const existing = byPairKey.get(key);
-        if (!existing || (existing.skipped_reason && !pair.skipped_reason)) byPairKey.set(key, pair);
+        const entry = merged.get(key) || { origin_id: pair.origin_id, destination_id: pair.destination_id };
+        entry[mode] = pair;
+        merged.set(key, entry);
       }
-      deduped = [...byPairKey.values()];
     }
-    const sortable = deduped.filter((p) => !p.skipped_reason);
-    const skipped = deduped.filter((p) => p.skipped_reason);
-    sortable.sort((a, b) => a.distance_meters - b.distance_meters);
+    const combined = [...merged.values()];
+
+    const closenessOf = (entry) => {
+      if (entry.walking && !entry.walking.skipped_reason) return entry.walking.distance_meters;
+      if (entry.driving && !entry.driving.skipped_reason) return entry.driving.distance_meters;
+      return null;
+    };
+    const sortable = combined.filter((e) => closenessOf(e) !== null);
+    const skipped = combined.filter((e) => closenessOf(e) === null);
+    sortable.sort((a, b) => closenessOf(a) - closenessOf(b));
 
     resultsEl.innerHTML = "";
     if (sortable.length === 0 && skipped.length === 0) {
@@ -602,10 +642,10 @@ async function runDistanceComparison() {
       return;
     }
     const list = Global.el("ul", { class: "distance-result-list" });
-    for (const pair of [...sortable, ...skipped]) {
-      const fromLabel = activityLabel(activitiesById[pair.origin_id]);
-      const toLabel = activityLabel(activitiesById[pair.destination_id]);
-      list.appendChild(formatDistancePair(pair, fromLabel, toLabel));
+    for (const entry of [...sortable, ...skipped]) {
+      const fromLabel = activityLabel(activitiesById[entry.origin_id]);
+      const toLabel = activityLabel(activitiesById[entry.destination_id]);
+      list.appendChild(formatCombinedResult(entry, fromLabel, toLabel));
     }
     if (sortable.length) list.firstElementChild.classList.add("distance-result-closest");
     resultsEl.appendChild(list);

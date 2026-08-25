@@ -11,7 +11,10 @@
 
 const ACTIVITIES_API = `${API_BASE}/activities`;
 const CATEGORIES_API = `${API_BASE}/categories`;
-const CITIES_API = `${ACTIVITIES_API}/cities`;
+// CITIES_API/cities/loadCitiesCache/cityInputElement moved to common.js -
+// index.html (the homepage's own trip list/edit) needs the same city
+// datalist too, and common.js is the one file already shared by every
+// page (this one isn't loaded there).
 
 // Same pattern as time-management's Category: a user-managed name+color
 // label, optionally assigned to an activity (category_id, nullable - see
@@ -39,37 +42,6 @@ function buildCategorySelect(selectedId) {
   return select;
 }
 
-// Every distinct city already in use (both trips' and activities' - see
-// crud.get_all_cities), fetched once so the city text input on every
-// activity's form, plus the trip header's own city field, can offer the
-// same <datalist> suggestions - a plain text field would otherwise let
-// "Toronto" get spelled a few different ways across activities and quietly
-// break the city filter. One shared <datalist> in the page (built by
-// refreshCityDatalist, appended once to <body>) rather than a copy per
-// input - a <datalist> id can be referenced by any number of inputs via
-// their own list="..." attribute.
-const CITY_DATALIST_ID = "city-datalist";
-let cities = [];
-
-async function loadCitiesCache() {
-  cities = await Global.fetchJSON(CITIES_API);
-  refreshCityDatalist();
-  return cities;
-}
-
-function refreshCityDatalist() {
-  let datalist = document.getElementById(CITY_DATALIST_ID);
-  if (!datalist) {
-    datalist = Global.el("datalist", { id: CITY_DATALIST_ID });
-    document.body.appendChild(datalist);
-  }
-  datalist.innerHTML = "";
-  for (const city of cities) datalist.appendChild(Global.el("option", { value: city }));
-}
-
-function cityInputElement(value) {
-  return Global.el("input", { type: "text", value: value || "", list: CITY_DATALIST_ID, placeholder: "City" });
-}
 
 // Shared by activities.html and trip.html (see their loadActivities) - the
 // same three-way split, so archived and done mean the same thing and look

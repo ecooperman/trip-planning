@@ -989,7 +989,11 @@ body.agenda-locked .agenda-entry-resize {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  /* Walk+drive together (see formatCombinedResult) run noticeably longer
+     than a single mode's line used to - wraps onto its own line under the
+     name on narrow screens instead of overflowing. */
+  flex-wrap: wrap;
+  gap: 4px 12px;
   padding: 10px 12px;
   border: 1px solid var(--border);
   border-radius: 8px;

@@ -4,12 +4,47 @@
 
 const API_BASE = "/api";
 const TRIPS_API = `${API_BASE}/trips`;
+const CITIES_API = `${API_BASE}/activities/cities`;
 
 // fetchJSON/el/showMessage/domainFromUrl/toISODate/dateInputToISO/
 // formatDateBadge all moved to https://static.evancooperman.com/theme.js
 // (window.Global) - shared with every app rather than duplicated here.
 // Everything below is trip-planning-specific: time-of-day-aware datetime
 // helpers, Google Maps deep-linking, and the view/edit toggle pattern.
+
+// Every distinct city already in use (both trips' and activities' - see
+// crud.get_all_cities), fetched once so the city text input on a trip's
+// own form (index.html and trip.html) and an activity's form
+// (activities.html/trip.html, via activity-shared.js) can all offer the
+// same <datalist> suggestions - a plain text field would otherwise let
+// "Toronto" get spelled a few different ways and quietly break the city
+// filter. Lives here, not activity-shared.js, since index.html (the
+// homepage) needs it too and doesn't load that file. One shared
+// <datalist> in the page (built by refreshCityDatalist, appended once to
+// <body>) rather than a copy per input - a <datalist> id can be
+// referenced by any number of inputs via their own list="..." attribute.
+const CITY_DATALIST_ID = "city-datalist";
+let cities = [];
+
+async function loadCitiesCache() {
+  cities = await Global.fetchJSON(CITIES_API);
+  refreshCityDatalist();
+  return cities;
+}
+
+function refreshCityDatalist() {
+  let datalist = document.getElementById(CITY_DATALIST_ID);
+  if (!datalist) {
+    datalist = Global.el("datalist", { id: CITY_DATALIST_ID });
+    document.body.appendChild(datalist);
+  }
+  datalist.innerHTML = "";
+  for (const city of cities) datalist.appendChild(Global.el("option", { value: city }));
+}
+
+function cityInputElement(value) {
+  return Global.el("input", { type: "text", value: value || "", list: CITY_DATALIST_ID, placeholder: "City" });
+}
 
 // --- datetime (date + time-of-day) helpers, for Activity.scheduled_start/
 // scheduled_end. Our stored datetimes are naive (no timezone) - they mean
