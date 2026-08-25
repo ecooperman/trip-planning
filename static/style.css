@@ -920,6 +920,12 @@ body.agenda-locked .agenda-entry-resize {
 
 #distance-tool-section {
   margin-bottom: 24px;
+  /* .archived-section sets overflow: hidden (clips other accordions' flush
+     edges to their rounded corners) - here it also clips the source/target
+     multiselect panels, which are position: absolute and meant to float
+     over the page below the card. Nothing in this accordion's own content
+     needs corner-clipping, so it's safe to open back up just for this one. */
+  overflow: visible;
 }
 
 .distance-tool-body {
