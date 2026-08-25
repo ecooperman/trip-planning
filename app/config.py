@@ -18,3 +18,10 @@ SHARED_ASSETS_BASE = "https://static.evancooperman.com" if ENV == "production" e
 # resume-admin's INTERNAL_API_TOKEN, see DEPLOYMENT.md). Import-from-
 # Instagram fails with a clear 503 (not a silent no-op) if this is unset.
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
+
+# Used by app/distance.py (Google Distance Matrix API) to compute real
+# walking/driving distances between activities - same never-committed,
+# shell-set-locally / systemd-set-on-the-droplet pattern as
+# ANTHROPIC_API_KEY above. The distance tool fails with a clear 503 (not a
+# silent no-op) if this is unset.
+GOOGLE_MAPS_API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY")

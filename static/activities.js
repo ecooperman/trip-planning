@@ -488,6 +488,133 @@ function initActivitySort() {
   });
 }
 
+// --- distance tool ---------------------------------------------------------
+//
+// One shared backend endpoint (POST /api/activities/distance-matrix - see
+// app/distance.py/routers/activities.py) behind two modes, picked purely by
+// whether an anchor is chosen:
+//  - No anchor: full pairwise distances among the selected candidates (e.g.
+//    "which 2 of these 5 cafes are closest to each other").
+//  - An anchor selected: distance from every OTHER candidate to just that
+//    one (e.g. "which of these 3 restaurants is closest to the show").
+// Real walking/driving distance via Google's Distance Matrix API, not a
+// guess - see distance.py's module docstring for why that matters here.
+let distanceCandidateIds = new Set();
+
+function activityLabel(activity) {
+  return activity.city ? `${activity.name} — ${activity.city}` : activity.name;
+}
+
+function initDistanceTool() {
+  const candidatesMount = document.getElementById("distance-candidates-mount");
+  const anchorSelect = document.getElementById("distance-anchor-select");
+  candidatesMount.innerHTML = "";
+  anchorSelect.innerHTML = '<option value="">None - compare candidates with each other</option>';
+
+  if (loadedActivities.length === 0) return;
+
+  const widget = Global.buildMultiSelect({
+    options: loadedActivities.map((a) => ({ value: a.id, label: activityLabel(a) })),
+    selected: [...distanceCandidateIds],
+    placeholder: "Select activities",
+    onChange: (selected) => {
+      distanceCandidateIds = new Set(selected.map(Number));
+    },
+  });
+  candidatesMount.appendChild(widget);
+
+  for (const activity of loadedActivities) {
+    anchorSelect.appendChild(Global.el("option", { value: String(activity.id), text: activityLabel(activity) }));
+  }
+
+  document.getElementById("distance-calculate-btn").addEventListener("click", runDistanceComparison);
+}
+
+function formatDistancePair(pair, fromLabel, toLabel) {
+  if (pair.skipped_reason) {
+    const reason = pair.skipped_reason === "no address" ? "no address on file" : "no route found";
+    return Global.el("li", { class: "distance-result-skipped", text: `${fromLabel} → ${toLabel}: ${reason}` });
+  }
+  return Global.el("li", {}, [
+    Global.el("span", { class: "distance-result-names", text: `${fromLabel} → ${toLabel}` }),
+    Global.el("span", { class: "distance-result-value", text: `${pair.distance_text} · ${pair.duration_text}` }),
+  ]);
+}
+
+async function runDistanceComparison() {
+  const resultsEl = document.getElementById("distance-results");
+  const anchorValue = document.getElementById("distance-anchor-select").value;
+  const anchorId = anchorValue ? Number(anchorValue) : null;
+  const mode = document.getElementById("distance-mode-select").value;
+  const forceRefresh = document.getElementById("distance-force-refresh").checked;
+  const candidateIds = [...distanceCandidateIds].filter((id) => id !== anchorId);
+  const activitiesById = Object.fromEntries(loadedActivities.map((a) => [a.id, a]));
+
+  if (candidateIds.length === 0) {
+    Global.showMessage("Select at least one candidate activity.", "error");
+    return;
+  }
+  if (!anchorId && candidateIds.length < 2) {
+    Global.showMessage("Select at least 2 candidates to compare against each other, or pick something to compare against.", "error");
+    return;
+  }
+
+  resultsEl.innerHTML = "";
+  resultsEl.appendChild(Global.el("p", { class: "note", text: "Calculating…" }));
+
+  try {
+    const body = anchorId
+      ? { origin_ids: candidateIds, destination_ids: [anchorId], mode, force_refresh: forceRefresh }
+      : { origin_ids: candidateIds, destination_ids: candidateIds, mode, force_refresh: forceRefresh };
+    const { pairs } = await Global.fetchJSON(`${ACTIVITIES_API}/distance-matrix`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    // Full-pairwise mode returns both directions (A→B and B→A) - walking/
+    // driving distance isn't always symmetric (one-way streets, etc.), so
+    // showing both as if they were two different facts would be more
+    // confusing than useful here - keep one entry per unordered pair.
+    // Prefer whichever direction actually resolved rather than always
+    // picking (say) the lower-id-first one regardless - Google's routing
+    // can itself be asymmetric (a path only walkable one way), and always
+    // keeping the same arbitrary direction could throw away the one side
+    // that actually had a real result in favor of a "no route found" from
+    // the other.
+    let deduped = pairs;
+    if (!anchorId) {
+      const byPairKey = new Map();
+      for (const pair of pairs) {
+        const key = [pair.origin_id, pair.destination_id].sort((a, b) => a - b).join(":");
+        const existing = byPairKey.get(key);
+        if (!existing || (existing.skipped_reason && !pair.skipped_reason)) byPairKey.set(key, pair);
+      }
+      deduped = [...byPairKey.values()];
+    }
+    const sortable = deduped.filter((p) => !p.skipped_reason);
+    const skipped = deduped.filter((p) => p.skipped_reason);
+    sortable.sort((a, b) => a.distance_meters - b.distance_meters);
+
+    resultsEl.innerHTML = "";
+    if (sortable.length === 0 && skipped.length === 0) {
+      resultsEl.appendChild(Global.el("p", { class: "note", text: "Nothing to compare." }));
+      return;
+    }
+    const list = Global.el("ul", { class: "distance-result-list" });
+    for (const pair of [...sortable, ...skipped]) {
+      const fromLabel = activityLabel(activitiesById[pair.origin_id]);
+      const toLabel = activityLabel(activitiesById[pair.destination_id]);
+      list.appendChild(formatDistancePair(pair, fromLabel, toLabel));
+    }
+    if (sortable.length) list.firstElementChild.classList.add("distance-result-closest");
+    resultsEl.appendChild(list);
+  } catch (err) {
+    resultsEl.innerHTML = "";
+    Global.showMessage(err.message, "error");
+  }
+}
+
 const pageParams = new URLSearchParams(window.location.search);
 const prefillParam = pageParams.get("prefill");
 const prefill = prefillParam ? decodeBase64UrlPrefill(prefillParam) : null;
@@ -530,6 +657,9 @@ async function init() {
   if (prefill) Global.showMessage(`Filled in from ${prefill.url ? Global.domainFromUrl(prefill.url) || "clipped page" : "clipped page"} - review and save.`, "success");
 
   await loadActivities();
+  // After loadActivities, not before - the candidates/anchor pickers are
+  // built from loadedActivities, which loadActivities is what populates.
+  initDistanceTool();
 }
 
 init().catch((err) => Global.showMessage(err.message, "error"));

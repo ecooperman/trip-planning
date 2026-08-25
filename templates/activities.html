@@ -38,6 +38,40 @@
       </form>
     </details>
 
+    <details id="distance-tool-section" class="archived-section">
+      <summary><span>Compare distances</span></summary>
+      <div class="distance-tool-body">
+        <p class="note">Pick a few activities, optionally one to compare everything else against (e.g. a show you already booked), and get real walking or driving distances between them.</p>
+        <div class="field">
+          <label>Candidates</label>
+          <div id="distance-candidates-mount"></div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>Compare against (optional)</label>
+            <select id="distance-anchor-select">
+              <option value="">None - compare candidates with each other</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Mode</label>
+            <select id="distance-mode-select">
+              <option value="walking">Walking</option>
+              <option value="driving">Driving</option>
+            </select>
+          </div>
+        </div>
+        <div class="distance-tool-actions">
+          <button type="button" id="distance-calculate-btn" class="save-btn">Calculate</button>
+          <label class="distance-force-refresh-label">
+            <input type="checkbox" id="distance-force-refresh" />
+            Force refresh (ignore cached results)
+          </label>
+        </div>
+        <div id="distance-results" class="distance-results"></div>
+      </div>
+    </details>
+
     <section>
       <div class="list-header">
         <h2>All activities</h2>

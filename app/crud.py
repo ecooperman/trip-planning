@@ -240,12 +240,25 @@ def create_activity(db: Session, activity: schemas.ActivityCreate):
     return db_activity
 
 
+def _invalidate_activity_distances(db: Session, activity_id: int):
+    """Drops every cached ActivityDistance row (either direction, any
+    mode) involving this activity - see the model's docstring for why."""
+    db.query(models.ActivityDistance).filter(
+        (models.ActivityDistance.origin_activity_id == activity_id) | (models.ActivityDistance.destination_activity_id == activity_id)
+    ).delete(synchronize_session=False)
+
+
 def update_activity(db: Session, activity_id: int, updates: schemas.ActivityUpdate):
     db_activity = get_activity(db, activity_id)
     if db_activity is None:
         return None
-    for field, value in updates.model_dump(exclude_unset=True).items():
+    update_data = updates.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
         setattr(db_activity, field, value)
+    # Only address/city changes actually affect distance - a renamed
+    # activity or a new cost doesn't, so this doesn't fire on every edit.
+    if "address" in update_data or "city" in update_data:
+        _invalidate_activity_distances(db, activity_id)
     db.commit()
     db.refresh(db_activity)
     return db_activity
@@ -255,12 +268,58 @@ def delete_activity(db: Session, activity_id: int) -> bool:
     db_activity = get_activity(db, activity_id)
     if db_activity is None:
         return False
-    # No manual join-row cleanup needed - SQLAlchemy removes the matching
-    # secondary-table rows automatically as part of deleting either side of
-    # a many-to-many relationship.
+    # No manual join-row cleanup needed for TripActivity - SQLAlchemy
+    # removes the matching secondary-table rows automatically as part of
+    # deleting either side of a many-to-many relationship. ActivityDistance
+    # isn't a secondary table though (a real row with its own columns), so
+    # it needs the explicit cleanup below.
+    _invalidate_activity_distances(db, activity_id)
     db.delete(db_activity)
     db.commit()
     return True
+
+
+# ---------------------------------------------------------------------------
+# Distance cache (Google Distance Matrix - see app/distance.py)
+# ---------------------------------------------------------------------------
+
+
+def get_cached_distances(db: Session, origin_ids: List[int], destination_ids: List[int], mode: str):
+    """Every cached row whose origin is in origin_ids AND destination is in
+    destination_ids, for this mode - keyed by (origin_id, destination_id)
+    for O(1) lookup by the caller. May include rows for pairs the caller
+    didn't actually ask for (this is a plain IN x IN cross-match, not an
+    exact-pairs match) - harmless, the caller only looks up the specific
+    keys it needs."""
+    rows = (
+        db.query(models.ActivityDistance)
+        .filter(models.ActivityDistance.mode == mode)
+        .filter(models.ActivityDistance.origin_activity_id.in_(origin_ids))
+        .filter(models.ActivityDistance.destination_activity_id.in_(destination_ids))
+        .all()
+    )
+    return {(row.origin_activity_id, row.destination_activity_id): row for row in rows}
+
+
+def cache_distance(db: Session, origin_id: int, destination_id: int, mode: str, result):
+    """Upsert - a later comparison that happens to re-fetch a pair already
+    cached (see the router's rectangular-sub-grid re-fetch) just refreshes
+    it rather than erroring on the unique constraint."""
+    existing = (
+        db.query(models.ActivityDistance)
+        .filter_by(origin_activity_id=origin_id, destination_activity_id=destination_id, mode=mode)
+        .first()
+    )
+    if existing is None:
+        existing = models.ActivityDistance(origin_activity_id=origin_id, destination_activity_id=destination_id, mode=mode)
+        db.add(existing)
+    existing.distance_meters = result.distance_meters
+    existing.distance_text = result.distance_text
+    existing.duration_seconds = result.duration_seconds
+    existing.duration_text = result.duration_text
+    existing.computed_at = datetime.utcnow()
+    db.commit()
+    return existing
 
 
 def save_activity_scrape_result(

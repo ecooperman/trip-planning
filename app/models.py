@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import relationship
 
 from .database import Base
@@ -142,6 +142,35 @@ class Activity(Base):
         "Trip", secondary="trip_activities", back_populates="activities"
     )
     category = relationship("Category", back_populates="activities")
+
+
+class ActivityDistance(Base):
+    """A cached real walking/driving distance+duration between two
+    activities (Google's Distance Matrix API - see app/distance.py).
+    Directional (origin -> destination), not a plain unordered pair -
+    routing isn't always symmetric (one-way streets, etc.), so each
+    direction is cached separately; cached per mode too, since walking and
+    driving obviously differ. Invalidated (deleted) whenever either
+    activity's address or city changes - see
+    crud._invalidate_activity_distances, called from update_activity and
+    delete_activity - a stale cached distance for an address that no
+    longer applies would be actively misleading, not just outdated."""
+
+    __tablename__ = "activity_distances"
+
+    id = Column(Integer, primary_key=True)
+    origin_activity_id = Column(Integer, ForeignKey("activities.id"), nullable=False)
+    destination_activity_id = Column(Integer, ForeignKey("activities.id"), nullable=False)
+    mode = Column(String, nullable=False)  # "walking" or "driving"
+    distance_meters = Column(Integer, nullable=False)
+    distance_text = Column(String, nullable=False)
+    duration_seconds = Column(Integer, nullable=False)
+    duration_text = Column(String, nullable=False)
+    computed_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("origin_activity_id", "destination_activity_id", "mode", name="uq_activity_distance_pair_mode"),
+    )
 
 
 class Stay(Base):

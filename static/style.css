@@ -914,6 +914,112 @@ body.agenda-locked .agenda-entry-resize {
   color: var(--cat-text-color, #000);
 }
 
+/* --- distance tool: real walking/driving distances between activities,
+   via Google's Distance Matrix API - see distance.py and activities.js's
+   initDistanceTool/runDistanceComparison. --- */
+
+#distance-tool-section {
+  margin-bottom: 24px;
+}
+
+.distance-tool-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 16px 16px;
+}
+
+.distance-tool-body .note {
+  margin: 0;
+}
+
+.distance-tool-body .field-row {
+  display: flex;
+  gap: 12px;
+}
+
+.distance-tool-body .field-row .field {
+  flex: 1;
+}
+
+.distance-tool-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+#distance-calculate-btn {
+  align-self: flex-start;
+}
+
+.distance-force-refresh-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+  cursor: pointer;
+  /* Overrides theme.css's generic `label { text-transform: uppercase }`
+     field-label style (same fix as the multiselect option rows) - this is
+     a checkbox's own inline label, not a field label above an input. */
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 400;
+}
+
+.distance-force-refresh-label input {
+  accent-color: var(--accent);
+}
+
+.distance-results:not(:empty) {
+  margin-top: 4px;
+}
+
+.distance-result-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.distance-result-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+/* The shortest result (sorted to the top - see runDistanceComparison) -
+   the one glance-able answer to "which of these is actually closest,"
+   not just a plain sorted list you have to read the first line of. */
+.distance-result-closest {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+}
+
+.distance-result-names {
+  font-weight: 600;
+}
+
+.distance-result-value {
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.distance-result-skipped {
+  color: var(--muted);
+  font-style: italic;
+}
+
 /* The whole summary row is tinted with the category's color, rather than
    just a left-border accent or a separate badge - see the comment in
    activity-shared.js. --cat-text-color (also set there) is a per-category

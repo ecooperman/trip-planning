@@ -1,6 +1,6 @@
 import re
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
@@ -308,3 +308,39 @@ class Stay(StayBase):
     scrape_error: Optional[str] = None
     created_at: datetime
     updated_at: datetime
+
+
+# ---------------------------------------------------------------------------
+# Distance (Google Distance Matrix - see app/distance.py)
+# ---------------------------------------------------------------------------
+
+
+class DistanceMatrixRequest(BaseModel):
+    origin_ids: List[int]
+    destination_ids: List[int]
+    mode: Literal["walking", "driving"] = "walking"
+    # Bypasses the cache (see ActivityDistance) and re-asks Google for
+    # every requested pair, overwriting whatever was cached - same idea as
+    # an activity's manual re-scrape button, for when you want to double-
+    # check a result rather than trust what's on file (a place moved, a
+    # road changed, or you just want to be sure).
+    force_refresh: bool = False
+
+
+class DistancePair(BaseModel):
+    origin_id: int
+    destination_id: int
+    distance_meters: Optional[int] = None
+    distance_text: Optional[str] = None
+    duration_seconds: Optional[int] = None
+    duration_text: Optional[str] = None
+    # Set (instead of the fields above) when this pair couldn't be
+    # computed - "no address" (the activity has neither an address nor a
+    # city to fall back to) or "no route found" (Google couldn't resolve
+    # one or both addresses, or there's genuinely no route for the given
+    # mode - e.g. across water on foot).
+    skipped_reason: Optional[str] = None
+
+
+class DistanceMatrixResponse(BaseModel):
+    pairs: List[DistancePair]
