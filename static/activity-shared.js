@@ -759,15 +759,16 @@ function initAddActivityToggle(container, { tripId = null, tripCity = null, onCr
 //
 // One shared backend endpoint (POST /api/activities/distance-matrix - see
 // app/distance.py/routers/activities.py), driven by two independent,
-// both-required activity pickers - source and target, so either side can
-// hold one activity or several: distance from every source to every target
+// both-required activity pickers - origin and destination (matching the
+// API's own origin_id/destination_id naming), so either side can hold one
+// activity or several: distance from every origin to every destination
 // (e.g. "which of these 3 restaurants is closest to the show" - or run it
-// the other way, show as the lone source and the restaurants as targets,
-// to see the same comparison from that side instead). No shorthand for
-// "compare a set with itself" - target is always a real, separate
-// selection; picking the same activity on both sides isn't specially
-// prevented, it's just not a mode of its own (that pair's distance would
-// trivially be 0 anyway).
+// the other way, show as the lone origin and the restaurants as
+// destinations, to see the same comparison from that side instead). No
+// shorthand for "compare a set with itself" - destination is always a
+// real, separate selection; picking the same activity on both sides isn't
+// specially prevented, it's just not a mode of its own (that pair's
+// distance would trivially be 0 anyway).
 // Real walking/driving distance via Google's Distance Matrix API, not a
 // guess - see distance.py's module docstring for why that matters here.
 
@@ -775,7 +776,7 @@ function activityLabel(activity) {
   return activity.city ? `${activity.name} — ${activity.city}` : activity.name;
 }
 
-// One side (source or target) of the tool: a category multiselect that
+// One side (origin or destination) of the tool: a category multiselect that
 // narrows a long activity list down (e.g. just cafes) before you pick from
 // it, plus the activity multiselect itself. The activity picker gets
 // rebuilt whenever the category filter changes - Global.buildMultiSelect
@@ -878,17 +879,17 @@ async function fetchDistancePairs(originIds, destinationIds, mode, forceRefresh)
   return pairs;
 }
 
-async function runDistanceComparison({ sourcePicker, targetPicker, forceRefreshCheckbox, resultsEl, getActivities }) {
-  const sourceIds = sourcePicker.getSelectedIds();
-  const targetIds = targetPicker.getSelectedIds();
+async function runDistanceComparison({ originPicker, destinationPicker, forceRefreshCheckbox, resultsEl, getActivities }) {
+  const originIds = originPicker.getSelectedIds();
+  const destinationIds = destinationPicker.getSelectedIds();
   const activitiesById = Object.fromEntries(getActivities().map((a) => [a.id, a]));
 
-  if (sourceIds.length === 0) {
-    Global.showMessage("Select at least one source activity.", "error");
+  if (originIds.length === 0) {
+    Global.showMessage("Select at least one origin activity.", "error");
     return;
   }
-  if (targetIds.length === 0) {
-    Global.showMessage("Select at least one target activity.", "error");
+  if (destinationIds.length === 0) {
+    Global.showMessage("Select at least one destination activity.", "error");
     return;
   }
 
@@ -900,14 +901,14 @@ async function runDistanceComparison({ sourcePicker, targetPicker, forceRefreshC
     // per request - two parallel requests, then merged client-side, rather
     // than a second round trip after seeing the first result.
     const [walkingPairs, drivingPairs] = await Promise.all([
-      fetchDistancePairs(sourceIds, targetIds, "walking", forceRefreshCheckbox.checked),
-      fetchDistancePairs(sourceIds, targetIds, "driving", forceRefreshCheckbox.checked),
+      fetchDistancePairs(originIds, destinationIds, "walking", forceRefreshCheckbox.checked),
+      fetchDistancePairs(originIds, destinationIds, "driving", forceRefreshCheckbox.checked),
     ]);
 
     // Merged by exact (origin,destination) - both calls are driven by the
-    // same source/target id lists, so they always cover the same set of
-    // pairs; source and target are always separate selections (see the
-    // module comment above), so there's no "which direction do I even
+    // same origin/destination id lists, so they always cover the same set
+    // of pairs; origin and destination are always separate selections (see
+    // the module comment above), so there's no "which direction do I even
     // mean" ambiguity that would need resolving here.
     const merged = new Map();
     for (const [mode, pairs] of [["walking", walkingPairs], ["driving", drivingPairs]]) {
@@ -956,16 +957,16 @@ function buildDistanceComparisonTool(getActivities) {
   body.appendChild(
     Global.el("p", {
       class: "note",
-      text: "Pick source and target activities and get real walking and driving distances from each source to each target - e.g. from a show to a few candidate restaurants, or the other way around. Filter each list by category first to narrow a long list down (e.g. just cafes).",
+      text: "Pick origin and destination activities and get real walking and driving distances from each origin to each destination - e.g. from a show to a few candidate restaurants, or the other way around. Filter each list by category first to narrow a long list down (e.g. just cafes).",
     })
   );
 
-  const sourcePicker = buildFilterableActivityPicker(getActivities, "Select source activities");
-  const targetPicker = buildFilterableActivityPicker(getActivities, "Select target activities");
+  const originPicker = buildFilterableActivityPicker(getActivities, "Select origin activities");
+  const destinationPicker = buildFilterableActivityPicker(getActivities, "Select destination activities");
   body.appendChild(
     Global.el("div", { class: "field-row" }, [
-      Global.el("div", { class: "field" }, [Global.el("label", { text: "Source" }), sourcePicker.element]),
-      Global.el("div", { class: "field" }, [Global.el("label", { text: "Target" }), targetPicker.element]),
+      Global.el("div", { class: "field" }, [Global.el("label", { text: "Origin" }), originPicker.element]),
+      Global.el("div", { class: "field" }, [Global.el("label", { text: "Destination" }), destinationPicker.element]),
     ])
   );
 
@@ -975,7 +976,7 @@ function buildDistanceComparisonTool(getActivities) {
     type: "button",
     class: "save-btn",
     text: "Calculate",
-    onclick: () => runDistanceComparison({ sourcePicker, targetPicker, forceRefreshCheckbox, resultsEl, getActivities }),
+    onclick: () => runDistanceComparison({ originPicker, destinationPicker, forceRefreshCheckbox, resultsEl, getActivities }),
   });
   body.appendChild(
     Global.el("div", { class: "distance-tool-actions" }, [
