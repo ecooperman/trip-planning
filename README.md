@@ -40,6 +40,9 @@ touching the API.
 - `GET /api/trips/{id}/activities`, `GET /api/trips/{id}/stays`
 - `GET /api/trips/{id}/stay-coverage` - whether every day of the trip is
   covered by a non-archived stay
+- `GET /api/trips/cost-summary` - per non-archived trip, the summed cost of
+  its non-archived activities + booked stays (cents). Read by the
+  **finances** app to forecast trip spend; not used by this app's own UI.
 - `POST/DELETE /api/trips/{id}/activities/{activity_id}` - associate/unlink
   an existing activity
 

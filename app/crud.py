@@ -87,6 +87,40 @@ def get_trip(db: Session, trip_id: int):
     return db.query(models.Trip).filter(models.Trip.id == trip_id).first()
 
 
+def trip_cost_summary(db: Session):
+    """Per non-archived trip: summed cost of its non-archived linked
+    activities plus its booked, non-archived stays. Costs are whole dollars
+    in the DB; returned as cents. Consumed by the finances app's trip
+    forecast (GET /api/trips/cost-summary)."""
+    out = []
+    for trip in db.query(models.Trip).filter(models.Trip.archived.is_(False)).all():
+        act = (
+            db.query(func.coalesce(func.sum(models.Activity.cost), 0))
+            .join(models.TripActivity, models.TripActivity.activity_id == models.Activity.id)
+            .filter(models.TripActivity.trip_id == trip.id)
+            .filter(models.Activity.archived.is_(False))
+            .scalar()
+        ) or 0
+        stay = (
+            db.query(func.coalesce(func.sum(models.Stay.cost), 0))
+            .filter(models.Stay.trip_id == trip.id)
+            .filter(models.Stay.archived.is_(False), models.Stay.booked.is_(True))
+            .scalar()
+        ) or 0
+        act, stay = int(act), int(stay)
+        out.append({
+            "id": trip.id,
+            "location": trip.location,
+            "city": trip.city,
+            "start_date": trip.start_date,
+            "end_date": trip.end_date,
+            "activities_cost_cents": act * 100,
+            "stays_cost_cents": stay * 100,
+            "total_cost_cents": (act + stay) * 100,
+        })
+    return out
+
+
 def fill_missing_activity_cities(db: Session, trip_id: int, city: str) -> int:
     activities = (
         db.query(models.Activity)

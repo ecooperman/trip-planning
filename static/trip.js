@@ -204,6 +204,8 @@ function stayCardElement(stay, { expanded = false } = {}) {
 
   const dateLabel = formatDateRange(stay.start_date, stay.end_date);
   if (dateLabel) summary.appendChild(Global.el("span", { class: "item-badge item-badge-date", text: dateLabel }));
+  const costLabel = formatCost(stay.cost);
+  if (costLabel) summary.appendChild(Global.el("span", { class: "item-badge item-badge-cost", text: costLabel }));
   if (stay.booked) summary.appendChild(Global.el("span", { class: "item-badge item-badge-booked", text: "Booked" }));
   if (stay.archived) summary.appendChild(Global.el("span", { class: "item-badge item-badge-archived", text: "Archived" }));
 
@@ -233,7 +235,11 @@ function buildStayViewEdit(card, stay) {
 function buildStayViewPane(card, stay) {
   const pane = Global.el("div", { class: "view-pane" });
 
-  const fields = [viewField("Description", stay.description), viewField("Address", stay.address)].filter(Boolean);
+  const fields = [
+    viewField("Description", stay.description),
+    viewField("Address", stay.address),
+    viewField("Cost", formatCost(stay.cost)),
+  ].filter(Boolean);
   if (fields.length) pane.appendChild(Global.el("div", { class: "view-fields" }, fields));
 
   const links = Global.el("div", { class: "view-links" });
@@ -298,6 +304,7 @@ function buildStayEditPane(card, stay) {
   descInput.value = stay.description || "";
   const urlInput = Global.el("input", { type: "url", value: stay.url || "" });
   const addressInput = Global.el("input", { type: "text", value: stay.address || "" });
+  const costInput = Global.el("input", { type: "number", min: "0", step: "1", value: stay.cost ?? "" });
   const startInput = Global.el("input", { type: "date", value: Global.toISODate(stay.start_date), required: "required" });
   const endInput = Global.el("input", { type: "date", value: Global.toISODate(stay.end_date), required: "required" });
   const bookedInput = Global.el("input", { type: "checkbox" });
@@ -309,6 +316,7 @@ function buildStayEditPane(card, stay) {
       Global.el("div", { class: "field" }, [Global.el("label", { text: "Description" }), descInput]),
       Global.el("div", { class: "field" }, [Global.el("label", { text: "URL" }), urlInput]),
       Global.el("div", { class: "field" }, [Global.el("label", { text: "Address" }), addressInput]),
+      Global.el("div", { class: "field" }, [Global.el("label", { text: "Cost ($)" }), costInput]),
       Global.el("div", { class: "field" }, [Global.el("label", { text: "Start date" }), startInput]),
       Global.el("div", { class: "field" }, [Global.el("label", { text: "End date" }), endInput]),
     ]),
@@ -347,6 +355,7 @@ function buildStayEditPane(card, stay) {
             description: descInput.value.trim() || null,
             url: urlInput.value.trim() || null,
             address: addressInput.value.trim() || null,
+            cost: costInput.value.trim() === "" ? null : Number(costInput.value),
             start_date: Global.dateInputToISO(startInput.value),
             end_date: Global.dateInputToISO(endInput.value),
             booked: bookedInput.checked,
@@ -428,6 +437,7 @@ function initAddStayForm() {
   const descInput = Global.el("textarea", { rows: "2", placeholder: "Optional notes" });
   const urlInput = Global.el("input", { type: "url", placeholder: "https://airbnb.com/rooms/..." });
   const addressInput = Global.el("input", { type: "text", placeholder: "Optional" });
+  const costInput = Global.el("input", { type: "number", min: "0", step: "1", placeholder: "Optional" });
   const startInput = Global.el("input", { type: "date", required: "required" });
   const endInput = Global.el("input", { type: "date", required: "required" });
   const bookedInput = Global.el("input", { type: "checkbox" });
@@ -437,6 +447,7 @@ function initAddStayForm() {
     Global.el("div", { class: "field" }, [Global.el("label", { text: "Description" }), descInput]),
     Global.el("div", { class: "field" }, [Global.el("label", { text: "URL" }), urlInput]),
     Global.el("div", { class: "field" }, [Global.el("label", { text: "Address" }), addressInput]),
+    Global.el("div", { class: "field" }, [Global.el("label", { text: "Cost ($)" }), costInput]),
     Global.el("div", { class: "field-row" }, [
       Global.el("div", { class: "field" }, [Global.el("label", { text: "Start date *" }), startInput]),
       Global.el("div", { class: "field" }, [Global.el("label", { text: "End date *" }), endInput]),
@@ -481,6 +492,7 @@ function initAddStayForm() {
           description: descInput.value.trim() || null,
           url: urlInput.value.trim() || null,
           address: addressInput.value.trim() || null,
+          cost: costInput.value.trim() === "" ? null : Number(costInput.value),
           start_date: Global.dateInputToISO(startInput.value),
           end_date: Global.dateInputToISO(endInput.value),
           booked: bookedInput.checked,

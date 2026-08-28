@@ -193,6 +193,9 @@ class Stay(Base):
     description = Column(Text, nullable=True)
     url = Column(String, nullable=True)
     address = Column(String, nullable=True)
+    # Whole dollars, same as Activity.cost. Feeds the finances app's trip
+    # cost forecast (booked stays are counted; see GET /api/trips/cost-summary).
+    cost = Column(Integer, nullable=True)
     start_date = Column(DateTime, nullable=False)
     end_date = Column(DateTime, nullable=False)
     booked = Column(Boolean, nullable=False, default=False)

@@ -15,6 +15,13 @@ def list_trips(db: Session = Depends(get_db)):
     return crud.get_trips(db)
 
 
+@router.get("/cost-summary", response_model=List[schemas.TripCostSummary])
+def trips_cost_summary(db: Session = Depends(get_db)):
+    """Per non-archived trip, the summed cost of its non-archived activities
+    and booked stays. Read by the finances app to forecast trip spend."""
+    return crud.trip_cost_summary(db)
+
+
 @router.post("", response_model=schemas.Trip)
 def create_trip(trip: schemas.TripCreate, db: Session = Depends(get_db)):
     return crud.create_trip(db, trip)

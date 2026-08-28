@@ -167,6 +167,22 @@ class StayCoverage(BaseModel):
     missing_dates: List[str] = []
 
 
+class TripCostSummary(BaseModel):
+    """One row per non-archived trip: the summed cost of its non-archived
+    linked activities and its booked non-archived stays, in cents. Consumed
+    by the finances app (GET /api/trips/cost-summary) to forecast trip
+    spend - not used by this app's own UI."""
+
+    id: int
+    location: str
+    city: Optional[str] = None
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+    activities_cost_cents: int
+    stays_cost_cents: int
+    total_cost_cents: int
+
+
 # ---------------------------------------------------------------------------
 # Activities
 # ---------------------------------------------------------------------------
@@ -257,11 +273,12 @@ class Activity(ActivityBase):
 # ---------------------------------------------------------------------------
 
 
-class StayBase(UrlValidator):
+class StayBase(UrlValidator, CostValidator):
     name: str
     description: Optional[str] = None
     url: Optional[str] = None
     address: Optional[str] = None
+    cost: Optional[int] = None
     start_date: datetime
     end_date: datetime
     booked: bool = False
@@ -277,11 +294,12 @@ class StayCreate(StayBase):
     trip_id: int
 
 
-class StayUpdate(UrlValidator):
+class StayUpdate(UrlValidator, CostValidator):
     name: Optional[str] = None
     description: Optional[str] = None
     url: Optional[str] = None
     address: Optional[str] = None
+    cost: Optional[int] = None
     start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None
     booked: Optional[bool] = None
