@@ -155,6 +155,26 @@
   text-decoration: none;
 }
 
+/* buildDogCareAttachmentField (trip.js) - a download link + Remove once
+   uploaded, or a file picker + Upload button before that. Sits in a
+   ".field" like any other form row, so it gets that class's label/spacing
+   for free; this just lays out its own controls in a row. */
+.attachment-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.attachment-controls input[type="file"] {
+  /* Overrides the generic `input { display: block; width: 100% }` rule -
+     a file input sized to fill the row looks broken (the browser's own
+     "Choose File" chrome doesn't stretch), same category of fix as
+     .task-done-checkbox's reset elsewhere in this app. */
+  display: inline-block;
+  width: auto;
+}
+
 /* --- archived section: a native <details> collapsed to one summary row
    by default, expanding into the full list --- */
 

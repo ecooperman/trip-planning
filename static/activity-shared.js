@@ -540,7 +540,7 @@ function buildActivityEditPane(card, activity, { onChanged, onDeleted, onUnlink,
 function buildActivityDistancesSection(activity) {
   const details = Global.el("details", { class: "activity-distances-section" });
   const body = Global.el("div", { class: "activity-distances-body" });
-  details.append(Global.el("summary", { text: "Distance to other activities" }), body);
+  details.append(Global.el("summary", { text: "Distance to" }), body);
 
   let loaded = false;
   details.addEventListener("toggle", async () => {
@@ -558,7 +558,12 @@ function buildActivityDistancesSection(activity) {
       }
       const list = Global.el("ul", { class: "distance-result-list" });
       for (const entry of entries) {
-        const otherLabel = entry.other_activity_city ? `${entry.other_activity_name} — ${entry.other_activity_city}` : entry.other_activity_name;
+        const otherLabel =
+          entry.other_kind === "stay"
+            ? `${entry.other_name} (Stay)`
+            : entry.other_city
+            ? `${entry.other_name} — ${entry.other_city}`
+            : entry.other_name;
         const arrow = entry.direction === "to" ? "→" : "←";
         const parts = [];
         if (entry.walking) parts.push(`Walk ${entry.walking.distance_text} · ${entry.walking.duration_text}`);
@@ -752,66 +757,97 @@ function initAddActivityToggle(container, { tripId = null, tripCity = null, onCr
 // --- distance comparison tool ("Compare distances") ------------------------
 //
 // Mounted on both activities.html (every activity) and trip.html (just
-// that trip's own activities) - built once here, entirely via JS (markup
-// and logic both), rather than duplicating this UI in two templates with
-// two near-identical page scripts behind them. See initDistanceTool at the
-// bottom for the actual mount call each page makes.
+// that trip's own activities, plus its stays - see below) - built once
+// here, entirely via JS (markup and logic both), rather than duplicating
+// this UI in two templates with two near-identical page scripts behind
+// them. See initDistanceTool at the bottom for the actual mount call each
+// page makes.
 //
-// One shared backend endpoint (POST /api/activities/distance-matrix - see
-// app/distance.py/routers/activities.py), driven by two independent,
-// both-required activity pickers - origin and destination (matching the
-// API's own origin_id/destination_id naming), so either side can hold one
-// activity or several: distance from every origin to every destination
+// One shared backend endpoint (POST /api/distance-matrix - see
+// app/distance.py/routers/distance.py), driven by two independent,
+// both-required location pickers - origin and destination (matching the
+// API's own origin/destination naming), so either side can hold one
+// location or several: distance from every origin to every destination
 // (e.g. "which of these 3 restaurants is closest to the show" - or run it
 // the other way, show as the lone origin and the restaurants as
 // destinations, to see the same comparison from that side instead). No
 // shorthand for "compare a set with itself" - destination is always a
-// real, separate selection; picking the same activity on both sides isn't
+// real, separate selection; picking the same location on both sides isn't
 // specially prevented, it's just not a mode of its own (that pair's
 // distance would trivially be 0 anyway).
 // Real walking/driving distance via Google's Distance Matrix API, not a
 // guess - see distance.py's module docstring for why that matters here.
+//
+// A "location" is an activity or a stay (a trip's lodging - useful as a
+// fixed "home base" to check every activity's distance from). Each side's
+// multiselect options carry a composite "kind:id" value (Global.el/
+// buildMultiSelect already treat option values as plain strings, so this
+// needs no special handling there) - locationRef below parses one back
+// into a {kind, id} pair for the API request.
 
 function activityLabel(activity) {
   return activity.city ? `${activity.name} — ${activity.city}` : activity.name;
 }
 
+function stayLabel(stay) {
+  return `${stay.name} (Stay)`;
+}
+
+function locationValue(kind, id) {
+  return `${kind}:${id}`;
+}
+
+function locationRef(value) {
+  const [kind, id] = value.split(":");
+  return { kind, id: Number(id) };
+}
+
 // One side (origin or destination) of the tool: a category multiselect that
 // narrows a long activity list down (e.g. just cafes) before you pick from
-// it, plus the activity multiselect itself. The activity picker gets
-// rebuilt whenever the category filter changes - Global.buildMultiSelect
-// has no "update options" of its own, and previously-selected activities
-// that no longer match the new filter are dropped from the selection
-// rather than left selected-but-hidden.
-function buildFilterableActivityPicker(getActivities, placeholder) {
+// it, plus the location multiselect itself (activities, and - only when
+// getStays is given, i.e. trip.html's trip-scoped instance - that trip's
+// stays too, listed first as the more likely "fixed anchor" pick). The
+// location picker gets rebuilt whenever the category filter changes -
+// Global.buildMultiSelect has no "update options" of its own, and
+// previously-selected locations that no longer match the new filter are
+// dropped from the selection rather than left selected-but-hidden. Stays
+// have no category, so they're only offered when no category filter is
+// active - same treatment as an activity with no category_id.
+function buildFilterableLocationPicker(getActivities, getStays, placeholder) {
   const wrap = Global.el("div", { class: "distance-picker" });
   const categoryFilterMount = Global.el("div", { class: "distance-picker-category-filter" });
-  const activityMount = Global.el("div", { class: "distance-picker-activities" });
-  wrap.append(categoryFilterMount, activityMount);
+  const locationMount = Global.el("div", { class: "distance-picker-activities" });
+  wrap.append(categoryFilterMount, locationMount);
 
   let selectedCategoryIds = new Set();
-  let selectedActivityIds = new Set();
+  let selectedValues = new Set();
 
-  function poolActivities() {
-    const all = getActivities();
-    if (selectedCategoryIds.size === 0) return all;
-    return all.filter((a) => a.category_id && selectedCategoryIds.has(String(a.category_id)));
+  function poolOptions() {
+    const activities = getActivities();
+    const filteredActivities =
+      selectedCategoryIds.size === 0
+        ? activities
+        : activities.filter((a) => a.category_id && selectedCategoryIds.has(String(a.category_id)));
+    const activityOptions = filteredActivities.map((a) => ({ value: locationValue("activity", a.id), label: activityLabel(a) }));
+    if (!getStays || selectedCategoryIds.size > 0) return activityOptions;
+    const stayOptions = getStays().map((s) => ({ value: locationValue("stay", s.id), label: stayLabel(s) }));
+    return [...stayOptions, ...activityOptions];
   }
 
-  function renderActivityPicker() {
-    const pool = poolActivities();
-    const poolIds = new Set(pool.map((a) => a.id));
-    for (const id of selectedActivityIds) {
-      if (!poolIds.has(id)) selectedActivityIds.delete(id);
+  function renderLocationPicker() {
+    const pool = poolOptions();
+    const poolValues = new Set(pool.map((o) => o.value));
+    for (const value of selectedValues) {
+      if (!poolValues.has(value)) selectedValues.delete(value);
     }
-    activityMount.innerHTML = "";
-    activityMount.appendChild(
+    locationMount.innerHTML = "";
+    locationMount.appendChild(
       Global.buildMultiSelect({
-        options: pool.map((a) => ({ value: a.id, label: activityLabel(a) })),
-        selected: [...selectedActivityIds],
+        options: pool,
+        selected: [...selectedValues],
         placeholder,
         onChange: (selected) => {
-          selectedActivityIds = new Set(selected.map(Number));
+          selectedValues = new Set(selected);
         },
       })
     );
@@ -825,14 +861,14 @@ function buildFilterableActivityPicker(getActivities, placeholder) {
         placeholder: "All categories",
         onChange: (selected) => {
           selectedCategoryIds = new Set(selected.map(String));
-          renderActivityPicker();
+          renderLocationPicker();
         },
       })
     );
   }
-  renderActivityPicker();
+  renderLocationPicker();
 
-  return { element: wrap, getSelectedIds: () => [...selectedActivityIds] };
+  return { element: wrap, getSelectedRefs: () => [...selectedValues].map(locationRef) };
 }
 
 // One mode's text ("Walk 2.4 km · 33 mins") plus, when it came from
@@ -846,18 +882,19 @@ function modeResultFragment(label, modeInfo) {
   return fragment;
 }
 
-function formatCombinedDistanceResult(entry, fromLabel, toLabel) {
+function formatCombinedDistanceResult(entry) {
   const modeFragments = [];
   if (entry.walking && !entry.walking.skipped_reason) modeFragments.push(modeResultFragment("Walk", entry.walking));
   if (entry.driving && !entry.driving.skipped_reason) modeFragments.push(modeResultFragment("Drive", entry.driving));
 
+  const namesText = `${entry.origin_label} → ${entry.destination_label}`;
   if (modeFragments.length === 0) {
     // Both modes failed - same underlying reason either way (an address
     // problem affects both identically; "no route" for both is rarer but
     // possible), so just report one, whichever's present.
     const reason = entry.walking?.skipped_reason || entry.driving?.skipped_reason;
     const text = reason === "no address" ? "no address on file" : "no route found";
-    return Global.el("li", { class: "distance-result-skipped", text: `${fromLabel} → ${toLabel}: ${text}` });
+    return Global.el("li", { class: "distance-result-skipped", text: `${namesText}: ${text}` });
   }
   const valueChildren = [];
   modeFragments.forEach((fragment, i) => {
@@ -865,31 +902,30 @@ function formatCombinedDistanceResult(entry, fromLabel, toLabel) {
     valueChildren.push(...fragment);
   });
   return Global.el("li", {}, [
-    Global.el("span", { class: "distance-result-names", text: `${fromLabel} → ${toLabel}` }),
+    Global.el("span", { class: "distance-result-names", text: namesText }),
     Global.el("span", { class: "distance-result-value" }, valueChildren),
   ]);
 }
 
-async function fetchDistancePairs(originIds, destinationIds, mode, forceRefresh) {
-  const { pairs } = await Global.fetchJSON(`${ACTIVITIES_API}/distance-matrix`, {
+async function fetchDistancePairs(origins, destinations, mode, forceRefresh) {
+  const { pairs } = await Global.fetchJSON(`${API_BASE}/distance-matrix`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ origin_ids: originIds, destination_ids: destinationIds, mode, force_refresh: forceRefresh }),
+    body: JSON.stringify({ origins, destinations, mode, force_refresh: forceRefresh }),
   });
   return pairs;
 }
 
-async function runDistanceComparison({ originPicker, destinationPicker, forceRefreshCheckbox, resultsEl, getActivities }) {
-  const originIds = originPicker.getSelectedIds();
-  const destinationIds = destinationPicker.getSelectedIds();
-  const activitiesById = Object.fromEntries(getActivities().map((a) => [a.id, a]));
+async function runDistanceComparison({ originPicker, destinationPicker, forceRefreshCheckbox, resultsEl }) {
+  const origins = originPicker.getSelectedRefs();
+  const destinations = destinationPicker.getSelectedRefs();
 
-  if (originIds.length === 0) {
-    Global.showMessage("Select at least one origin activity.", "error");
+  if (origins.length === 0) {
+    Global.showMessage("Select at least one origin.", "error");
     return;
   }
-  if (destinationIds.length === 0) {
-    Global.showMessage("Select at least one destination activity.", "error");
+  if (destinations.length === 0) {
+    Global.showMessage("Select at least one destination.", "error");
     return;
   }
 
@@ -901,20 +937,26 @@ async function runDistanceComparison({ originPicker, destinationPicker, forceRef
     // per request - two parallel requests, then merged client-side, rather
     // than a second round trip after seeing the first result.
     const [walkingPairs, drivingPairs] = await Promise.all([
-      fetchDistancePairs(originIds, destinationIds, "walking", forceRefreshCheckbox.checked),
-      fetchDistancePairs(originIds, destinationIds, "driving", forceRefreshCheckbox.checked),
+      fetchDistancePairs(origins, destinations, "walking", forceRefreshCheckbox.checked),
+      fetchDistancePairs(origins, destinations, "driving", forceRefreshCheckbox.checked),
     ]);
 
     // Merged by exact (origin,destination) - both calls are driven by the
-    // same origin/destination id lists, so they always cover the same set
+    // same origin/destination ref lists, so they always cover the same set
     // of pairs; origin and destination are always separate selections (see
     // the module comment above), so there's no "which direction do I even
-    // mean" ambiguity that would need resolving here.
+    // mean" ambiguity that would need resolving here. Labels come straight
+    // from the response (the backend already knows every location's name,
+    // whether it's an activity or a stay), so there's no client-side
+    // lookup needed to render a result row.
     const merged = new Map();
     for (const [mode, pairs] of [["walking", walkingPairs], ["driving", drivingPairs]]) {
       for (const pair of pairs) {
-        const key = `${pair.origin_id}:${pair.destination_id}`;
-        const entry = merged.get(key) || { origin_id: pair.origin_id, destination_id: pair.destination_id };
+        const key = `${pair.origin_kind}:${pair.origin_id}:${pair.destination_kind}:${pair.destination_id}`;
+        const entry = merged.get(key) || {
+          origin_label: pair.origin_label,
+          destination_label: pair.destination_label,
+        };
         entry[mode] = pair;
         merged.set(key, entry);
       }
@@ -937,9 +979,7 @@ async function runDistanceComparison({ originPicker, destinationPicker, forceRef
     }
     const list = Global.el("ul", { class: "distance-result-list" });
     for (const entry of [...sortable, ...skipped]) {
-      const fromLabel = activityLabel(activitiesById[entry.origin_id]);
-      const toLabel = activityLabel(activitiesById[entry.destination_id]);
-      list.appendChild(formatCombinedDistanceResult(entry, fromLabel, toLabel));
+      list.appendChild(formatCombinedDistanceResult(entry));
     }
     if (sortable.length) list.firstElementChild.classList.add("distance-result-closest");
     resultsEl.appendChild(list);
@@ -949,20 +989,21 @@ async function runDistanceComparison({ originPicker, destinationPicker, forceRef
   }
 }
 
-function buildDistanceComparisonTool(getActivities) {
+function buildDistanceComparisonTool(getActivities, getStays) {
   const details = Global.el("details", { class: "archived-section", id: "distance-tool-section" });
   details.append(Global.el("summary", {}, [Global.el("span", { text: "Compare distances" })]));
 
   const body = Global.el("div", { class: "distance-tool-body" });
+  const stayNote = getStays ? " Stays show up too, as a fixed \"home base\" to check against." : "";
   body.appendChild(
     Global.el("p", {
       class: "note",
-      text: "Pick origin and destination activities and get real walking and driving distances from each origin to each destination - e.g. from a show to a few candidate restaurants, or the other way around. Filter each list by category first to narrow a long list down (e.g. just cafes).",
+      text: `Pick origin and destination activities and get real walking and driving distances from each origin to each destination - e.g. from a show to a few candidate restaurants, or the other way around. Filter each list by category first to narrow a long list down (e.g. just cafes).${stayNote}`,
     })
   );
 
-  const originPicker = buildFilterableActivityPicker(getActivities, "Select origin activities");
-  const destinationPicker = buildFilterableActivityPicker(getActivities, "Select destination activities");
+  const originPicker = buildFilterableLocationPicker(getActivities, getStays, "Select origin");
+  const destinationPicker = buildFilterableLocationPicker(getActivities, getStays, "Select destination");
   body.appendChild(
     Global.el("div", { class: "field-row" }, [
       Global.el("div", { class: "field" }, [Global.el("label", { text: "Origin" }), originPicker.element]),
@@ -976,7 +1017,7 @@ function buildDistanceComparisonTool(getActivities) {
     type: "button",
     class: "save-btn",
     text: "Calculate",
-    onclick: () => runDistanceComparison({ originPicker, destinationPicker, forceRefreshCheckbox, resultsEl, getActivities }),
+    onclick: () => runDistanceComparison({ originPicker, destinationPicker, forceRefreshCheckbox, resultsEl }),
   });
   body.appendChild(
     Global.el("div", { class: "distance-tool-actions" }, [
@@ -996,9 +1037,13 @@ function buildDistanceComparisonTool(getActivities) {
 // updating whatever module-level array this closes over is automatically
 // picked up the next time a picker rebuilds, rather than needing this
 // whole tool re-mounted from scratch after every change on the page.
-function initDistanceTool(mountId, getActivities) {
+// getStays: () => Stay[], optional - only trip.html passes this (a single
+// trip's own stays are a coherent "home base" list; activities.html has no
+// one trip to scope stays to, so it omits this and only offers activities,
+// same as before stays existed).
+function initDistanceTool(mountId, getActivities, getStays) {
   const mount = document.getElementById(mountId);
   if (!mount) return;
   mount.innerHTML = "";
-  mount.appendChild(buildDistanceComparisonTool(getActivities));
+  mount.appendChild(buildDistanceComparisonTool(getActivities, getStays));
 }

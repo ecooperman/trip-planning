@@ -4,7 +4,7 @@ from typing import List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
-from .models import ScrapeStatus
+from .models import ScrapeStatus, TravelType
 
 # Basic http(s) URL shape check - scheme + a non-empty host. Fields using
 # this are optional free text usually pasted straight from a browser
@@ -157,10 +157,14 @@ class Trip(TripBase):
     updated_at: datetime
 
 
-class StayCoverage(BaseModel):
+class DateRangeCoverage(BaseModel):
     """Whether every day of a trip is covered by at least one non-archived
-    stay. has_dates is False (and covered defaults True) when the trip
-    itself has no start/end date set - there's nothing to check yet."""
+    record of some kind - a stay (GET /{trip_id}/stay-coverage) or a
+    dog-care booking (GET /{trip_id}/dog-care-coverage) both return this
+    same shape, since it's the same underlying question either way: does
+    every day away have this thing arranged. has_dates is False (and
+    covered defaults True) when the trip itself has no start/end date set
+    - there's nothing to check yet."""
 
     has_dates: bool
     covered: bool
@@ -169,9 +173,10 @@ class StayCoverage(BaseModel):
 
 class TripCostSummary(BaseModel):
     """One row per non-archived trip: the summed cost of its non-archived
-    linked activities and its booked non-archived stays, in cents. Consumed
-    by the finances app (GET /api/trips/cost-summary) to forecast trip
-    spend - not used by this app's own UI."""
+    linked activities, its booked non-archived stays, travel segments, and
+    dog-care bookings, in cents. Consumed by the finances app (GET
+    /api/trips/cost-summary) to forecast trip spend - not used by this
+    app's own UI."""
 
     id: int
     location: str
@@ -180,6 +185,8 @@ class TripCostSummary(BaseModel):
     end_date: Optional[datetime] = None
     activities_cost_cents: int
     stays_cost_cents: int
+    travel_cost_cents: int
+    dog_care_cost_cents: int
     total_cost_cents: int
 
 
@@ -329,15 +336,149 @@ class Stay(StayBase):
 
 
 # ---------------------------------------------------------------------------
+# Travel segments (flights, trains, rental cars, ferries - see models.TravelSegment)
+# ---------------------------------------------------------------------------
+
+
+class TravelSegmentBase(UrlValidator, CostValidator):
+    type: TravelType = TravelType.flight
+    name: str
+    url: Optional[str] = None
+    confirmation_number: Optional[str] = None
+    carrier: Optional[str] = None
+    number: Optional[str] = None
+    departure_location: Optional[str] = None
+    arrival_location: Optional[str] = None
+    departure_time: Optional[datetime] = None
+    arrival_time: Optional[datetime] = None
+    cost: Optional[int] = None
+    notes: Optional[str] = None
+    booked: bool = False
+
+    @model_validator(mode="after")
+    def _check_time_order(self):
+        # Both optional (see models.TravelSegment) - only checked when both
+        # happen to be set, same conditional pattern as StayUpdate's own
+        # date-order check below.
+        if self.departure_time and self.arrival_time and self.arrival_time < self.departure_time:
+            raise ValueError("arrival_time must be on or after departure_time")
+        return self
+
+
+class TravelSegmentCreate(TravelSegmentBase):
+    trip_id: int
+
+
+class TravelSegmentUpdate(UrlValidator, CostValidator):
+    type: Optional[TravelType] = None
+    name: Optional[str] = None
+    url: Optional[str] = None
+    confirmation_number: Optional[str] = None
+    carrier: Optional[str] = None
+    number: Optional[str] = None
+    departure_location: Optional[str] = None
+    arrival_location: Optional[str] = None
+    departure_time: Optional[datetime] = None
+    arrival_time: Optional[datetime] = None
+    cost: Optional[int] = None
+    notes: Optional[str] = None
+    booked: Optional[bool] = None
+    archived: Optional[bool] = None
+
+    @model_validator(mode="after")
+    def _check_time_order(self):
+        if self.departure_time and self.arrival_time and self.arrival_time < self.departure_time:
+            raise ValueError("arrival_time must be on or after departure_time")
+        return self
+
+
+class TravelSegment(TravelSegmentBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    trip_id: int
+    archived: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+# ---------------------------------------------------------------------------
+# Dog care bookings (see models.DogCareBooking)
+# ---------------------------------------------------------------------------
+
+
+class DogCareBookingBase(UrlValidator, CostValidator):
+    company_name: str
+    walker_name: Optional[str] = None
+    url: Optional[str] = None
+    cost: Optional[int] = None
+    start_date: datetime
+    end_date: datetime
+    booked: bool = False
+
+    @model_validator(mode="after")
+    def _check_date_order(self):
+        if self.end_date < self.start_date:
+            raise ValueError("end_date must be on or after start_date")
+        return self
+
+
+class DogCareBookingCreate(DogCareBookingBase):
+    trip_id: int
+
+
+class DogCareBookingUpdate(UrlValidator, CostValidator):
+    company_name: Optional[str] = None
+    walker_name: Optional[str] = None
+    url: Optional[str] = None
+    cost: Optional[int] = None
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+    booked: Optional[bool] = None
+    archived: Optional[bool] = None
+
+    @model_validator(mode="after")
+    def _check_date_order(self):
+        if self.start_date and self.end_date and self.end_date < self.start_date:
+            raise ValueError("end_date must be on or after start_date")
+        return self
+
+
+class DogCareBooking(DogCareBookingBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    trip_id: int
+    archived: bool
+    # Attachment presence/filename only - the raw bytes never go in a JSON
+    # response (see the dedicated GET .../attachments/{kind} download
+    # route instead, which streams them with the right content type).
+    invoice_filename: Optional[str] = None
+    instructions_filename: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+# ---------------------------------------------------------------------------
 # Distance (Google Distance Matrix - see app/distance.py)
 # ---------------------------------------------------------------------------
 
 
+class LocationRef(BaseModel):
+    """One endpoint of a distance comparison - an activity or a stay (a
+    trip's lodging, usable as a fixed "home base" - see
+    routers/distance.py). kind+id together identify it, the same
+    composite key models.LocationDistance itself is keyed on."""
+
+    kind: Literal["activity", "stay"]
+    id: int
+
+
 class DistanceMatrixRequest(BaseModel):
-    origin_ids: List[int]
-    destination_ids: List[int]
+    origins: List[LocationRef]
+    destinations: List[LocationRef]
     mode: Literal["walking", "driving"] = "walking"
-    # Bypasses the cache (see ActivityDistance) and re-asks Google for
+    # Bypasses the cache (see LocationDistance) and re-asks Google for
     # every requested pair, overwriting whatever was cached - same idea as
     # an activity's manual re-scrape button, for when you want to double-
     # check a result rather than trust what's on file (a place moved, a
@@ -346,19 +487,23 @@ class DistanceMatrixRequest(BaseModel):
 
 
 class DistancePair(BaseModel):
+    origin_kind: Literal["activity", "stay"]
     origin_id: int
+    origin_label: str
+    destination_kind: Literal["activity", "stay"]
     destination_id: int
+    destination_label: str
     distance_meters: Optional[int] = None
     distance_text: Optional[str] = None
     duration_seconds: Optional[int] = None
     duration_text: Optional[str] = None
     # Set (instead of the fields above) when this pair couldn't be
-    # computed - "no address" (the activity has neither an address nor a
+    # computed - "no address" (the location has neither an address nor a
     # city to fall back to) or "no route found" (Google couldn't resolve
     # one or both addresses, or there's genuinely no route for the given
     # mode - e.g. across water on foot).
     skipped_reason: Optional[str] = None
-    # True if this result was read from ActivityDistance rather than just
+    # True if this result was read from LocationDistance rather than just
     # spent on a live Google Distance Matrix call - None for a skipped pair,
     # where the concept doesn't apply (a "no address" skip never reaches
     # Google or the cache either way; a "no route found" pair is never
@@ -376,18 +521,20 @@ class DistanceModeInfo(BaseModel):
 
 
 class ActivityDistanceEntry(BaseModel):
-    """One cached distance between this activity and another - see
-    GET /api/activities/{id}/distances. direction is "to" (this activity
-    was the origin when it was computed) or "from" (this activity was the
-    destination) - shown separately rather than merged, since which
-    direction got cached depends on how the comparison was run (a
-    many-candidates-vs-one-anchor comparison, for instance, only ever
-    caches candidates -> anchor, never the reverse) and isn't necessarily
-    the same distance/time either way (one-way streets, etc.)."""
+    """One cached distance between this activity and another location
+    (another activity, or a stay) - see GET /api/activities/{id}/distances.
+    direction is "to" (this activity was the origin when it was computed)
+    or "from" (this activity was the destination) - shown separately
+    rather than merged, since which direction got cached depends on how
+    the comparison was run (a many-candidates-vs-one-anchor comparison,
+    for instance, only ever caches candidates -> anchor, never the
+    reverse) and isn't necessarily the same distance/time either way
+    (one-way streets, etc.)."""
 
-    other_activity_id: int
-    other_activity_name: str
-    other_activity_city: Optional[str] = None
+    other_kind: Literal["activity", "stay"]
+    other_id: int
+    other_name: str
+    other_city: Optional[str] = None
     direction: Literal["to", "from"]
     walking: Optional[DistanceModeInfo] = None
     driving: Optional[DistanceModeInfo] = None

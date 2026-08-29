@@ -1,24 +1,25 @@
 """Real walking/driving distance and duration between two or more
-activities, via Google's Distance Matrix API - not the LLM. An LLM has no
-actual map to consult; asked "how far apart are these two addresses," it's
-pattern-matching against general geographic knowledge, not doing real
-geometry, and a wrong answer here isn't a stylistic miss - it sends you
-walking or driving the wrong way. This is a case for the boring,
-deterministic tool.
+locations (activities or stays), via Google's Distance Matrix API - not the
+LLM. An LLM has no actual map to consult; asked "how far apart are these
+two addresses," it's pattern-matching against general geographic
+knowledge, not doing real geometry, and a wrong answer here isn't a
+stylistic miss - it sends you walking or driving the wrong way. This is a
+case for the boring, deterministic tool.
 
 One call handles many origins x many destinations at once (Google returns
 the full matrix in a single request) - the same primitive serves every use
 case this powers: a full pairwise matrix among a set of candidates (find
 the closest pair of cafes), many candidates against one fixed anchor
-(which restaurant is closest to the show), or one activity against
-everything else (a "nearby" lookup). See routers/activities.py's
-/distance-matrix endpoint for how callers actually reach this.
+(which restaurant is closest to the show, or how far everything is from
+where you're staying), or one location against everything else (a
+"nearby" lookup). See routers/distance.py's /distance-matrix endpoint for
+how callers actually reach this.
 
 This module only ever talks to Google for a pair (origin, destination,
-mode) the caller doesn't already have cached - see the ActivityDistance
+mode) the caller doesn't already have cached - see the LocationDistance
 table (models.py) and crud.get_cached_distances/cache_distance. Caching is
-keyed and invalidated per app/crud.py's _invalidate_activity_distances
-(fires only when an activity's address or city actually changes), so a
+keyed and invalidated per app/crud.py's _invalidate_location_distances
+(fires only when a location's address or city actually changes), so a
 result is only ever re-fetched when it could genuinely be different, or
 the caller explicitly asks via force_refresh.
 """
@@ -93,14 +94,25 @@ def get_distance_matrix(
     return rows
 
 
-def address_query_for(activity) -> Optional[str]:
-    """Best-effort query string for an activity - its real address if it
+def _address_query(name: str, address: Optional[str], city: Optional[str]) -> Optional[str]:
+    """Best-effort query string for a named place - its real address if it
     has one, else a "name, city" fallback (still enough for Google's own
     geocoding to often resolve a named business, the same way typing a
     place name into Google Maps search works) - None only when there's
     nothing at all to go on."""
-    if activity.address:
-        return activity.address
-    if activity.city:
-        return f"{activity.name}, {activity.city}"
+    if address:
+        return address
+    if city:
+        return f"{name}, {city}"
     return None
+
+
+def address_query_for(activity) -> Optional[str]:
+    return _address_query(activity.name, activity.address, activity.city)
+
+
+def stay_address_query_for(stay) -> Optional[str]:
+    # A stay has no city of its own (see models.Stay) - falls back to its
+    # trip's city instead, same idea as an activity falling back to its own
+    # city field.
+    return _address_query(stay.name, stay.address, stay.trip.city if stay.trip else None)

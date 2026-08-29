@@ -17,8 +17,9 @@ def list_trips(db: Session = Depends(get_db)):
 
 @router.get("/cost-summary", response_model=List[schemas.TripCostSummary])
 def trips_cost_summary(db: Session = Depends(get_db)):
-    """Per non-archived trip, the summed cost of its non-archived activities
-    and booked stays. Read by the finances app to forecast trip spend."""
+    """Per non-archived trip, the summed cost of its non-archived
+    activities and booked stays and travel segments. Read by the finances
+    app to forecast trip spend."""
     return crud.trip_cost_summary(db)
 
 
@@ -102,9 +103,31 @@ def list_trip_stays(trip_id: int, db: Session = Depends(get_db)):
     return crud.get_stays(db, trip_id)
 
 
-@router.get("/{trip_id}/stay-coverage", response_model=schemas.StayCoverage)
+@router.get("/{trip_id}/stay-coverage", response_model=schemas.DateRangeCoverage)
 def get_stay_coverage(trip_id: int, db: Session = Depends(get_db)):
     coverage = crud.get_trip_stay_coverage(db, trip_id)
+    if coverage is None:
+        raise HTTPException(status_code=404, detail="Trip not found")
+    return coverage
+
+
+@router.get("/{trip_id}/travel", response_model=List[schemas.TravelSegment])
+def list_trip_travel_segments(trip_id: int, db: Session = Depends(get_db)):
+    if crud.get_trip(db, trip_id) is None:
+        raise HTTPException(status_code=404, detail="Trip not found")
+    return crud.get_travel_segments(db, trip_id)
+
+
+@router.get("/{trip_id}/dog-care", response_model=List[schemas.DogCareBooking])
+def list_trip_dog_care_bookings(trip_id: int, db: Session = Depends(get_db)):
+    if crud.get_trip(db, trip_id) is None:
+        raise HTTPException(status_code=404, detail="Trip not found")
+    return crud.get_dog_care_bookings(db, trip_id)
+
+
+@router.get("/{trip_id}/dog-care-coverage", response_model=schemas.DateRangeCoverage)
+def get_dog_care_coverage(trip_id: int, db: Session = Depends(get_db)):
+    coverage = crud.get_trip_dog_care_coverage(db, trip_id)
     if coverage is None:
         raise HTTPException(status_code=404, detail="Trip not found")
     return coverage
@@ -120,7 +143,8 @@ def export_trip_xlsx(trip_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Trip not found")
     activities = crud.get_activities(db, trip_id=trip_id)
     stays = crud.get_stays(db, trip_id)
-    workbook = export.build_trip_workbook(trip, activities, stays)
+    travel_segments = crud.get_travel_segments(db, trip_id)
+    workbook = export.build_trip_workbook(trip, activities, stays, travel_segments)
     buf = export.workbook_bytes(workbook)
     filename = export.safe_filename(trip.location)
     return StreamingResponse(
