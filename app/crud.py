@@ -56,12 +56,18 @@ def update_category(db: Session, category_id: int, updates: schemas.CategoryUpda
 
 def delete_category(db: Session, category_id: int) -> str:
     """Returns 'deleted', 'not_found', or 'in_use' (refuses to delete a
-    category still assigned to any activity - the router turns 'in_use'
-    into a 409, matching time-management's own Category delete)."""
+    category still assigned to any activity or place - the router turns
+    'in_use' into a 409, matching time-management's own Category delete).
+    Checks Activity.own_category_id specifically (not the resolving
+    category_id property, which isn't a real column) - a place-linked
+    activity's effective category is checked via its place instead."""
     db_category = get_category(db, category_id)
     if db_category is None:
         return "not_found"
-    in_use = db.query(models.Activity).filter(models.Activity.category_id == category_id).count()
+    in_use = (
+        db.query(models.Activity).filter(models.Activity.own_category_id == category_id).count()
+        + db.query(models.Place).filter(models.Place.category_id == category_id).count()
+    )
     if in_use > 0:
         return "in_use"
     db.delete(db_category)
@@ -137,15 +143,21 @@ def trip_cost_summary(db: Session):
 
 
 def fill_missing_activity_cities(db: Session, trip_id: int, city: str) -> int:
+    # place_id IS NULL excludes place-linked activities on purpose - their
+    # effective city comes from the linked place (see models.Activity), so
+    # there's nothing meaningful to fill on the activity's own row; that
+    # place's own city is a separate, deliberate edit, not something this
+    # bulk action should reach into.
     activities = (
         db.query(models.Activity)
         .join(models.TripActivity, models.TripActivity.activity_id == models.Activity.id)
         .filter(models.TripActivity.trip_id == trip_id)
-        .filter((models.Activity.city.is_(None)) | (models.Activity.city == ""))
+        .filter(models.Activity.place_id.is_(None))
+        .filter((models.Activity.own_city.is_(None)) | (models.Activity.own_city == ""))
         .all()
     )
     for activity in activities:
-        activity.city = city
+        activity.own_city = city
     db.commit()
     return len(activities)
 
@@ -258,14 +270,20 @@ def get_trip_stay_coverage(db: Session, trip_id: int) -> Optional[dict]:
 
 
 def get_all_cities(db: Session) -> List[str]:
-    """Every distinct city in use, from both Trip.city and Activity.city -
-    powers the datalist on both the trip and activity forms (so naming
-    stays consistent no matter where you set it) and the city filter on
-    activities.html. Not a managed table like Category - just whatever
-    strings are actually in use, alphabetized."""
+    """Every distinct city in use, from Trip.city, Activity.own_city, and
+    Place.city - powers the datalist on the trip/activity/place forms (so
+    naming stays consistent no matter where you set it) and the city
+    filter on activities.html. Queries own_city (the real column) rather
+    than the resolving city property, which isn't a real column - a
+    place-linked activity's city is already covered by scanning Place.city
+    directly. Not a managed table like Category - just whatever strings
+    are actually in use, alphabetized."""
     trip_cities = {c for (c,) in db.query(models.Trip.city).filter(models.Trip.city.isnot(None), models.Trip.city != "").distinct()}
-    activity_cities = {c for (c,) in db.query(models.Activity.city).filter(models.Activity.city.isnot(None), models.Activity.city != "").distinct()}
-    return sorted(trip_cities | activity_cities)
+    activity_cities = {
+        c for (c,) in db.query(models.Activity.own_city).filter(models.Activity.own_city.isnot(None), models.Activity.own_city != "").distinct()
+    }
+    place_cities = {c for (c,) in db.query(models.Place.city).filter(models.Place.city.isnot(None), models.Place.city != "").distinct()}
+    return sorted(trip_cities | activity_cities | place_cities)
 
 
 def get_activities(
@@ -314,11 +332,27 @@ def update_activity(db: Session, activity_id: int, updates: schemas.ActivityUpda
     if db_activity is None:
         return None
     update_data = updates.model_dump(exclude_unset=True)
+    # Linking to a place (via a plain PATCH, not crud.promote_activity_to_
+    # place - that path clears these itself before this is ever called)
+    # makes this activity's own venue fields dormant (see models.Activity's
+    # docstring) - clear them so the DB doesn't keep stale, invisible data
+    # lying around once the place is the source of truth.
+    if update_data.get("place_id") is not None:
+        db_activity.own_name = None
+        db_activity.own_description = None
+        db_activity.own_url = None
+        db_activity.own_address = None
+        db_activity.own_city = None
+        db_activity.own_phone_number = None
+        db_activity.own_map_link = None
+        db_activity.own_category_id = None
     for field, value in update_data.items():
         setattr(db_activity, field, value)
-    # Only address/city changes actually affect distance - a renamed
-    # activity or a new cost doesn't, so this doesn't fire on every edit.
-    if "address" in update_data or "city" in update_data:
+    # Address/city change distance directly; place_id changes it
+    # indirectly (a newly linked - or unlinked - place has its own address/
+    # city). A renamed activity or a new cost doesn't affect distance at
+    # all, so this doesn't fire on every edit.
+    if "address" in update_data or "city" in update_data or "place_id" in update_data:
         _invalidate_location_distances(db, "activity", activity_id)
     db.commit()
     db.refresh(db_activity)
@@ -336,6 +370,173 @@ def delete_activity(db: Session, activity_id: int) -> bool:
     # it needs the explicit cleanup below.
     _invalidate_location_distances(db, "activity", activity_id)
     db.delete(db_activity)
+    db.commit()
+    return True
+
+
+# ---------------------------------------------------------------------------
+# Places (see models.Place) - reusable, cross-trip; not tied to any one trip
+# or activity the way Stay/TravelSegment/DogCareBooking are tied to a trip.
+# ---------------------------------------------------------------------------
+
+
+def get_places(db: Session):
+    return db.query(models.Place).order_by(models.Place.name).all()
+
+
+def get_place(db: Session, place_id: int):
+    return db.query(models.Place).filter(models.Place.id == place_id).first()
+
+
+def create_place(db: Session, place: schemas.PlaceCreate):
+    db_place = models.Place(**place.model_dump())
+    db.add(db_place)
+    db.commit()
+    db.refresh(db_place)
+    return db_place
+
+
+def update_place(db: Session, place_id: int, updates: schemas.PlaceUpdate):
+    db_place = get_place(db, place_id)
+    if db_place is None:
+        return None
+    update_data = updates.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(db_place, field, value)
+    if "address" in update_data or "city" in update_data:
+        # Every activity delegating to this place just had its effective
+        # address/city change too (see models.Activity's address/city
+        # properties), even though none of their own columns did -
+        # invalidate each one's cached distances the same as if its own
+        # address had changed directly.
+        for activity in db_place.activities:
+            _invalidate_location_distances(db, "activity", activity.id)
+    db.commit()
+    db.refresh(db_place)
+    return db_place
+
+
+def delete_place(db: Session, place_id: int) -> str:
+    """Returns 'deleted', 'not_found', or 'in_use' (refuses to delete a
+    place any activity still links to - unlink or delete those first; a
+    place-linked activity's own name/address/etc. were cleared when it was
+    linked, so silently unlinking here would leave it with no venue info
+    at all, same reasoning as delete_category's 'in_use')."""
+    db_place = get_place(db, place_id)
+    if db_place is None:
+        return "not_found"
+    if db.query(models.Activity).filter(models.Activity.place_id == place_id).count() > 0:
+        return "in_use"
+    db.delete(db_place)
+    db.commit()
+    return "deleted"
+
+
+def save_place_scrape_result(
+    db: Session,
+    place_id: int,
+    status: models.ScrapeStatus,
+    title: Optional[str] = None,
+    description: Optional[str] = None,
+    image_url: Optional[str] = None,
+    error: Optional[str] = None,
+):
+    db_place = get_place(db, place_id)
+    if db_place is None:
+        return None
+    db_place.scrape_status = status
+    db_place.scraped_title = title
+    db_place.scraped_description = description
+    db_place.scraped_image_url = image_url
+    db_place.scrape_error = error
+    db_place.scraped_at = datetime.utcnow()
+    db.commit()
+    db.refresh(db_place)
+    return db_place
+
+
+def promote_activity_to_place(db: Session, activity_id: int):
+    """Creates a new Place from this activity's own current name/
+    description/url/address/city/phone_number/map_link/category_id,
+    links the activity to it, and clears those columns on the activity
+    (see models.Activity's docstring - from this point on they resolve
+    through the place instead). Returns the updated activity, or None if
+    it doesn't exist, is already place-linked, or has no name (nothing to
+    promote - see schemas.ActivityCreate's own name-or-place_id rule)."""
+    db_activity = get_activity(db, activity_id)
+    if db_activity is None or db_activity.place_id is not None or not db_activity.own_name:
+        return None
+
+    db_place = models.Place(
+        name=db_activity.own_name,
+        description=db_activity.own_description,
+        url=db_activity.own_url,
+        address=db_activity.own_address,
+        city=db_activity.own_city,
+        phone_number=db_activity.own_phone_number,
+        map_link=db_activity.own_map_link,
+        category_id=db_activity.own_category_id,
+    )
+    db.add(db_place)
+    db.flush()  # assigns db_place.id without a full commit yet
+
+    db_activity.place_id = db_place.id
+    db_activity.own_name = None
+    db_activity.own_description = None
+    db_activity.own_url = None
+    db_activity.own_address = None
+    db_activity.own_city = None
+    db_activity.own_phone_number = None
+    db_activity.own_map_link = None
+    db_activity.own_category_id = None
+
+    # Same reasoning as update_activity's place_id branch - the activity's
+    # effective address just changed (from its own to the new place's,
+    # copied from the same values, so not truly different yet, but this
+    # keeps the rule simple and exactly matches update_activity's own
+    # place_id handling rather than special-casing "these happen to start
+    # out equal").
+    _invalidate_location_distances(db, "activity", activity_id)
+
+    db.commit()
+    db.refresh(db_activity)
+    return db_activity
+
+
+# ---------------------------------------------------------------------------
+# Place photos (see models.PlaceImage) - plain binary storage, no
+# processing, same pattern as DogCareBooking's invoice/instructions except
+# one-to-many.
+# ---------------------------------------------------------------------------
+
+
+def get_place_images(db: Session, place_id: int):
+    return db.query(models.PlaceImage).filter(models.PlaceImage.place_id == place_id).order_by(models.PlaceImage.created_at).all()
+
+
+def get_place_image(db: Session, image_id: int):
+    return db.query(models.PlaceImage).filter(models.PlaceImage.id == image_id).first()
+
+
+def add_place_image(db: Session, place_id: int, filename: str, content_type: str, data: bytes):
+    if get_place(db, place_id) is None:
+        return None
+    image = models.PlaceImage(place_id=place_id, filename=filename, content_type=content_type, data=data)
+    db.add(image)
+    db.commit()
+    db.refresh(image)
+    return image
+
+
+def delete_place_image(db: Session, place_id: int, image_id: int) -> bool:
+    image = (
+        db.query(models.PlaceImage)
+        .filter(models.PlaceImage.id == image_id, models.PlaceImage.place_id == place_id)
+        .first()
+    )
+    if image is None:
+        return False
+    db.delete(image)
     db.commit()
     return True
 

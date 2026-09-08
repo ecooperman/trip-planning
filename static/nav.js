@@ -8,6 +8,7 @@
 function currentNavActive() {
   const path = window.location.pathname;
   if (path === "/activities.html") return "activities";
+  if (path === "/places.html") return "places";
   // "/", "/trip.html", and "/agenda.html" are all trip-context pages.
   return "trips";
 }
@@ -16,5 +17,9 @@ const active = currentNavActive();
 Global.buildNav([
   { href: "/", icon: "compass", label: "Trips", active: active === "trips" },
   { href: "/activities.html", icon: "list", label: "Activities", active: active === "activities" },
+  // No dedicated map-pin icon exists in shared-assets yet - "tag" reused
+  // pragmatically rather than adding one there for a single app's sake;
+  // worth a real icon if this bar gets revisited generally.
+  { href: "/places.html", icon: "tag", label: "Places", active: active === "places" },
   { icon: "refresh", label: "Refresh", onclick: () => location.reload() },
 ]);

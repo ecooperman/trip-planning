@@ -41,6 +41,21 @@ class CostValidator(BaseModel):
         return v
 
 
+class RatingValidator(BaseModel):
+    """Mixed into Place and Activity's schemas (both have an optional 1-5
+    `rating`) - out of range is almost certainly a typo (a 10-star rating,
+    a negative one), not a meaningful edge case worth silently clamping."""
+
+    @field_validator("rating", check_fields=False)
+    @classmethod
+    def _check_rating(cls, v: Optional[int]) -> Optional[int]:
+        if v is None:
+            return None
+        if not (1 <= v <= 5):
+            raise ValueError("Rating must be between 1 and 5")
+        return v
+
+
 # ---------------------------------------------------------------------------
 # Categories
 # ---------------------------------------------------------------------------
@@ -191,6 +206,71 @@ class TripCostSummary(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Places (see models.Place) - a reusable, cross-trip record of a real place,
+# so it can be linked from one or more Activities instead of re-entering
+# the same venue details for every visit.
+# ---------------------------------------------------------------------------
+
+
+class PlaceBase(UrlValidator, RatingValidator):
+    name: str
+    description: Optional[str] = None
+    url: Optional[str] = None
+    address: Optional[str] = None
+    city: Optional[str] = None
+    phone_number: Optional[str] = None
+    map_link: Optional[str] = None
+    category_id: Optional[int] = None
+    # This place's own overall rating/review - see models.Place's
+    # docstring on how this differs from a linked Activity's own rating.
+    rating: Optional[int] = None
+    review: Optional[str] = None
+
+
+class PlaceCreate(PlaceBase):
+    pass
+
+
+class PlaceUpdate(UrlValidator, RatingValidator):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    url: Optional[str] = None
+    address: Optional[str] = None
+    city: Optional[str] = None
+    phone_number: Optional[str] = None
+    map_link: Optional[str] = None
+    category_id: Optional[int] = None
+    rating: Optional[int] = None
+    review: Optional[str] = None
+
+
+class Place(PlaceBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    scrape_status: ScrapeStatus
+    scraped_title: Optional[str] = None
+    scraped_description: Optional[str] = None
+    scraped_image_url: Optional[str] = None
+    scraped_at: Optional[datetime] = None
+    scrape_error: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class PlaceImage(BaseModel):
+    """One uploaded photo's metadata - never the raw bytes (see
+    GET /api/places/{id}/photos/{photo_id} for the actual image)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    place_id: int
+    filename: str
+    created_at: datetime
+
+
+# ---------------------------------------------------------------------------
 # Activities
 # ---------------------------------------------------------------------------
 
@@ -209,8 +289,12 @@ class ScheduleValidator(BaseModel):
         return self
 
 
-class ActivityBase(UrlValidator, CostValidator, ScheduleValidator):
-    name: str
+class ActivityBase(UrlValidator, CostValidator, ScheduleValidator, RatingValidator):
+    # Optional, not required - only needed when NOT linking to an existing
+    # place (see place_id below and models.Activity's delegating
+    # properties); ActivityCreate enforces "name or place_id" itself, since
+    # that check doesn't apply to a partial update or to a response.
+    name: Optional[str] = None
     description: Optional[str] = None
     url: Optional[str] = None
     cost: Optional[int] = None
@@ -222,6 +306,11 @@ class ActivityBase(UrlValidator, CostValidator, ScheduleValidator):
     # Separate from `description` - notes is for the user's own reminders,
     # not a scraped/copied summary of the place.
     notes: Optional[str] = None
+    # This visit's own rating/review - see models.Activity's docstring on
+    # why this is never delegated to a linked place the way name/address/
+    # etc. are (two visits to the same place can go very differently).
+    rating: Optional[int] = None
+    review: Optional[str] = None
     # Null means "not yet scheduled" - see agenda.html, which lists
     # activities with no scheduled_start in an unscheduled sidebar.
     scheduled_start: Optional[datetime] = None
@@ -229,6 +318,10 @@ class ActivityBase(UrlValidator, CostValidator, ScheduleValidator):
     done: bool = False
     archived: bool = False
     category_id: Optional[int] = None
+    # When set, this activity's name/description/url/address/city/
+    # phone_number/map_link/category_id all come from that place instead
+    # of this activity's own columns - see models.Activity.
+    place_id: Optional[int] = None
 
 
 class ActivityCreate(ActivityBase):
@@ -237,8 +330,14 @@ class ActivityCreate(ActivityBase):
     # send null) to create an unassociated activity, as from /activities.html.
     trip_id: Optional[int] = None
 
+    @model_validator(mode="after")
+    def _check_name_or_place(self):
+        if not self.place_id and not (self.name and self.name.strip()):
+            raise ValueError("name is required unless place_id is set")
+        return self
 
-class ActivityUpdate(UrlValidator, CostValidator, ScheduleValidator):
+
+class ActivityUpdate(UrlValidator, CostValidator, ScheduleValidator, RatingValidator):
     name: Optional[str] = None
     description: Optional[str] = None
     url: Optional[str] = None
@@ -249,11 +348,14 @@ class ActivityUpdate(UrlValidator, CostValidator, ScheduleValidator):
     phone_number: Optional[str] = None
     map_link: Optional[str] = None
     notes: Optional[str] = None
+    rating: Optional[int] = None
+    review: Optional[str] = None
     scheduled_start: Optional[datetime] = None
     scheduled_end: Optional[datetime] = None
     done: Optional[bool] = None
     archived: Optional[bool] = None
     category_id: Optional[int] = None
+    place_id: Optional[int] = None
 
 
 class Activity(ActivityBase):

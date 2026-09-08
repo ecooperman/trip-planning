@@ -5,6 +5,26 @@
 const API_BASE = "/api";
 const TRIPS_API = `${API_BASE}/trips`;
 const CITIES_API = `${API_BASE}/activities/cities`;
+const CATEGORIES_API = `${API_BASE}/categories`;
+
+// A user-managed label (name + color), optionally assigned to an activity
+// or place (category_id, nullable). Fetched once into module state rather
+// than nested on every activity/place from the API - every page that
+// needs it (activities.html/trip.html via activity-shared.js, agenda.html,
+// places.html) should `await loadCategoriesCache()` before building any
+// card/form that reads it. Used to live as a near-identical copy in both
+// activity-shared.js and agenda.js (they're never loaded on the same page,
+// so it never collided, but it was still the same code twice) - places.js
+// needing it too was the actual reason to finally share one copy here.
+let categories = [];
+let categoriesById = {};
+
+async function loadCategoriesCache() {
+  categories = await Global.fetchJSON(CATEGORIES_API);
+  categoriesById = {};
+  for (const category of categories) categoriesById[category.id] = category;
+  return categories;
+}
 
 // fetchJSON/el/showMessage/domainFromUrl/toISODate/dateInputToISO/
 // formatDateBadge all moved to https://static.evancooperman.com/theme.js
@@ -121,6 +141,59 @@ function formatDuration(minutes) {
 function formatCost(cost) {
   if (cost === null || cost === undefined) return null;
   return `$${cost.toLocaleString()}`;
+}
+
+// A 1-5 rating as filled/empty star glyphs, for a read-only badge (Place
+// and Activity cards both use this) - null when there's no rating at all,
+// same "don't render a placeholder for absent data" convention as
+// formatCost.
+function starsDisplay(rating) {
+  if (!rating) return null;
+  return "★".repeat(rating) + "☆".repeat(5 - rating);
+}
+
+// A row of 5 clickable stars standing in for a plain <input> - exposes a
+// `.value` property (get/set, 1-5 or null) so it drops into the same
+// "read/set .value" code every other form field in this app already uses,
+// rather than every caller needing its own bespoke get/set logic. Clicking
+// the star that's already the current rating clears it (0/null) instead of
+// re-setting the same value - the only way to undo a rating without a
+// separate "clear" control.
+function ratingInputElement(value) {
+  const wrap = Global.el("div", { class: "rating-input" });
+  let current = value || 0;
+  const starEls = [];
+
+  function refresh() {
+    starEls.forEach((el, i) => {
+      el.textContent = i < current ? "★" : "☆";
+      el.classList.toggle("filled", i < current);
+    });
+  }
+
+  for (let i = 0; i < 5; i++) {
+    const star = Global.el("button", {
+      type: "button",
+      class: "rating-star",
+      "aria-label": `${i + 1} star${i === 0 ? "" : "s"}`,
+      onclick: () => {
+        current = current === i + 1 ? 0 : i + 1;
+        refresh();
+      },
+    });
+    starEls.push(star);
+    wrap.appendChild(star);
+  }
+  refresh();
+
+  Object.defineProperty(wrap, "value", {
+    get: () => current || null,
+    set: (v) => {
+      current = v || 0;
+      refresh();
+    },
+  });
+  return wrap;
 }
 
 function isYelpUrl(url) {

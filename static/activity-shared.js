@@ -10,26 +10,34 @@
 // wireViewEditToggle in common.js for the swap mechanism itself.
 
 const ACTIVITIES_API = `${API_BASE}/activities`;
-const CATEGORIES_API = `${API_BASE}/categories`;
-// CITIES_API/cities/loadCitiesCache/cityInputElement moved to common.js -
-// index.html (the homepage's own trip list/edit) needs the same city
-// datalist too, and common.js is the one file already shared by every
-// page (this one isn't loaded there).
+const PLACES_API = `${API_BASE}/places`;
+// CATEGORIES_API/categories/categoriesById/loadCategoriesCache and
+// CITIES_API/cities/loadCitiesCache/cityInputElement all moved to
+// common.js - other pages (agenda.html, places.html) need the same
+// category cache, and index.html needs the same city datalist, so
+// common.js (the one file already shared by every page) is where they
+// live now.
 
-// Same pattern as time-management's Category: a user-managed name+color
-// label, optionally assigned to an activity (category_id, nullable - see
-// models.py for why this one's optional unlike Task's). Fetched once into
-// module state rather than nested on every activity from the API, so both
-// pages' loadActivities() should `await loadCategoriesCache()` before
-// building any cards/forms - see activities.js/trip.js.
-let categories = [];
-let categoriesById = {};
+// Every Place (see models.Place / places.html), fetched once for the
+// "link to an existing place" select on an activity's form - same
+// fetch-once-into-module-state pattern as categories/cities above.
+let placesCache = [];
 
-async function loadCategoriesCache() {
-  categories = await Global.fetchJSON(CATEGORIES_API);
-  categoriesById = {};
-  for (const category of categories) categoriesById[category.id] = category;
-  return categories;
+async function loadPlacesCache() {
+  placesCache = await Global.fetchJSON(PLACES_API);
+  return placesCache;
+}
+
+// A <select> of every place, plus a leading "not linked" option - used on
+// both the add form and the edit pane's "link to an existing place"
+// control. selectedId null/undefined selects the leading option.
+function buildPlaceLinkSelect(selectedId) {
+  const select = Global.el("select", { class: "place-link-select" }, [
+    Global.el("option", { value: "", text: "— Not linked (enter details below) —" }),
+    ...placesCache.map((p) => Global.el("option", { value: String(p.id), text: p.city ? `${p.name} — ${p.city}` : p.name })),
+  ]);
+  select.value = selectedId ? String(selectedId) : "";
+  return select;
 }
 
 function buildCategorySelect(selectedId) {
@@ -157,6 +165,9 @@ function activityCardElement(activity, opts = {}) {
   const cost = formatCost(activity.cost);
   if (cost) summary.appendChild(Global.el("span", { class: "item-badge item-badge-cost", text: cost }));
 
+  const ratingLabel = starsDisplay(activity.rating);
+  if (ratingLabel) summary.appendChild(Global.el("span", { class: "item-badge-rating", text: ratingLabel }));
+
   if (showTripBadge && trip) {
     const tripTitle = `Trip: ${trip.location}`;
     const link = Global.el(
@@ -241,6 +252,12 @@ function buildActivityViewPane(card, activity, { onChanged, onDeleted, onUnlink,
     viewField("Address", activity.address),
     viewField("City", activity.city),
     viewField("Confirmation #", activity.confirmation_number),
+    // This visit's own rating/review - never the linked place's own rating
+    // (see models.Activity's docstring) - a place-linked activity can
+    // still disagree with the place's overall rating.
+    viewField("Rating", starsDisplay(activity.rating)),
+    viewField("Review", activity.review),
+    activity.place_id ? viewField("Place", "🔗 Linked - shared details (name/address/etc.) live on the Places page.") : null,
   ].filter(Boolean);
   if (fields.length) pane.appendChild(Global.el("div", { class: "view-fields" }, fields));
 
@@ -314,125 +331,93 @@ function buildActivityViewPane(card, activity, { onChanged, onDeleted, onUnlink,
     })
   );
 
-  actions.append(buildDuplicatePicker(activity));
+  // "Duplicate to trip..." used to live here - copying an activity's own
+  // details to a new one on another trip, entirely to work around not
+  // having a reusable Place to link to instead. Superseded now: link a
+  // new activity straight to this same place (see buildPlaceLinkSelect)
+  // instead of copying its data at all.
+  if (!activity.place_id) {
+    actions.append(
+      Global.el("button", {
+        type: "button",
+        class: "secondary-btn",
+        text: "Create a place from this",
+        title: "Turns this activity's own name/address/etc. into a reusable place you can link future activities to",
+        onclick: async () => {
+          try {
+            const updated = await Global.fetchJSON(`${ACTIVITIES_API}/${activity.id}/promote-to-place`, { method: "POST" });
+            Global.showMessage(`"${updated.name}" is now a saved place.`, "success");
+            loadPlacesCache();
+            if (onChanged) onChanged(updated);
+          } catch (err) {
+            Global.showMessage(err.message, "error");
+          }
+        },
+      })
+    );
+  }
   actions.append(Global.el("button", { type: "button", class: "secondary-btn edit-toggle-btn", text: "Edit" }));
   pane.appendChild(actions);
 
   return pane;
 }
 
-// "Duplicate to trip..." - for re-doing an activity you already marked done
-// on a past trip. Copies the place's own details (name/description/notes/
-// address/phone/url/cost) to a brand-new activity on the chosen trip;
-// deliberately drops confirmation_number, done, and scheduled_start/end -
-// those describe a specific past booking/occurrence, not the place itself.
-// Trips are fetched lazily (only once the trigger is clicked) rather than
-// upfront on every card render, since most cards never open this.
-function buildDuplicatePicker(activity) {
-  const wrap = Global.el("div", { class: "duplicate-picker" });
-  const triggerBtn = Global.el("button", { type: "button", class: "secondary-btn", text: "Duplicate to trip..." });
-  const pickerRow = Global.el("div", { class: "duplicate-picker-row hidden" });
-  const select = Global.el("select", {});
-
-  const confirmBtn = Global.el("button", {
-    type: "button",
-    class: "save-btn",
-    text: "Duplicate",
-    onclick: async () => {
-      const tripId = select.value;
-      if (!tripId) return;
-      const tripLabel = select.options[select.selectedIndex].text;
-      confirmBtn.disabled = true;
-      try {
-        await Global.fetchJSON(ACTIVITIES_API, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: activity.name,
-            description: activity.description,
-            url: activity.url,
-            cost: activity.cost,
-            address: activity.address,
-            phone_number: activity.phone_number,
-            map_link: activity.map_link,
-            notes: activity.notes,
-            trip_id: Number(tripId),
-          }),
-        });
-        Global.showMessage(`Duplicated "${activity.name}" to ${tripLabel}.`, "success");
-        pickerRow.classList.add("hidden");
-        triggerBtn.classList.remove("hidden");
-      } catch (err) {
-        Global.showMessage(err.message, "error");
-      } finally {
-        confirmBtn.disabled = false;
-      }
-    },
-  });
-
-  const cancelBtn = Global.el("button", {
-    type: "button",
-    class: "cancel-btn",
-    text: "Cancel",
-    onclick: () => {
-      pickerRow.classList.add("hidden");
-      triggerBtn.classList.remove("hidden");
-    },
-  });
-
-  pickerRow.append(select, confirmBtn, cancelBtn);
-
-  triggerBtn.addEventListener("click", async () => {
-    triggerBtn.classList.add("hidden");
-    pickerRow.classList.remove("hidden");
-    select.innerHTML = "";
-    select.disabled = true;
-    confirmBtn.disabled = true;
-    select.appendChild(Global.el("option", { value: "", text: "Loading trips..." }));
-    try {
-      const trips = await Global.fetchJSON(TRIPS_API);
-      const currentTripIds = new Set((activity.trips || []).map((t) => t.id));
-      const options = trips.filter((t) => !currentTripIds.has(t.id));
-      select.innerHTML = "";
-      if (options.length === 0) {
-        select.appendChild(Global.el("option", { value: "", text: "No other trips yet" }));
-      } else {
-        select.disabled = false;
-        confirmBtn.disabled = false;
-        select.appendChild(Global.el("option", { value: "", text: "Choose a trip..." }));
-        for (const trip of options) {
-          select.appendChild(
-            Global.el("option", { value: String(trip.id), text: trip.archived ? `${trip.location} (archived)` : trip.location })
-          );
-        }
-      }
-    } catch (err) {
-      select.innerHTML = "";
-      select.appendChild(Global.el("option", { value: "", text: "Failed to load trips" }));
-      Global.showMessage(err.message, "error");
-    }
-  });
-
-  wrap.append(triggerBtn, pickerRow);
-  return wrap;
-}
-
 function buildActivityEditPane(card, activity, { onChanged, onDeleted, onUnlink, showTripBadge }) {
   const pane = Global.el("div", { class: "edit-pane" });
+
+  // "Link to an existing place" - choosing one here hides the venue fields
+  // below (their values will come from the place instead, same as
+  // models.Activity's own delegation) and picking the leading "not linked"
+  // option (the default for an activity with no place_id) shows them,
+  // pre-filled with whatever this activity currently resolves to - either
+  // its own values, or a snapshot of the place's, ready to edit
+  // independently if you switch away from it. See the Save handler below
+  // for how the payload differs between the two states.
+  const placeLinkSelect = buildPlaceLinkSelect(activity.place_id);
 
   const nameInput = Global.el("input", { type: "text", value: activity.name, required: "required" });
   const categorySelect = buildCategorySelect(activity.category_id);
   const descInput = Global.el("textarea", { rows: "2" });
   descInput.value = activity.description || "";
-  const notesInput = Global.el("textarea", { rows: "2" });
-  notesInput.value = activity.notes || "";
   const urlInput = Global.el("input", { type: "url", value: activity.url || "" });
-  const costInput = Global.el("input", { type: "number", min: "0", step: "1", value: activity.cost ?? "" });
-  const confirmationInput = Global.el("input", { type: "text", value: activity.confirmation_number || "" });
   const addressInput = Global.el("input", { type: "text", value: activity.address || "" });
   const cityInput = cityInputElement(activity.city);
   const phoneInput = Global.el("input", { type: "tel", value: activity.phone_number || "" });
   const mapLinkInput = Global.el("input", { type: "url", value: activity.map_link || "" });
+  // A bare, unclassed wrapper around the actual .item-fields grid -
+  // .item-fields' own `display: grid` (theme.css) beats the native
+  // [hidden] attribute's `display: none` under normal CSS cascade rules
+  // (an author-stylesheet declaration always wins over a user-agent
+  // stylesheet one, regardless of specificity or source order) - toggling
+  // `hidden` directly on a `.item-fields`-classed element silently does
+  // nothing. Toggling it here instead, one level up, avoids that clash
+  // entirely rather than fighting it with a more specific override.
+  const venueFields = Global.el("div", {}, [
+    Global.el("div", { class: "item-fields" }, [
+      Global.el("div", { class: "field" }, [Global.el("label", { text: "Name" }), nameInput]),
+      Global.el("div", { class: "field" }, [Global.el("label", { text: "Category" }), categorySelect]),
+      Global.el("div", { class: "field" }, [Global.el("label", { text: "Description" }), descInput]),
+      Global.el("div", { class: "field" }, [Global.el("label", { text: "URL" }), urlInput]),
+      Global.el("div", { class: "field" }, [Global.el("label", { text: "Address" }), addressInput]),
+      Global.el("div", { class: "field" }, [Global.el("label", { text: "City" }), cityInput]),
+      Global.el("div", { class: "field" }, [Global.el("label", { text: "Phone" }), phoneInput]),
+      Global.el("div", { class: "field" }, [Global.el("label", { text: "Map link" }), mapLinkInput]),
+    ]),
+  ]);
+
+  function refreshVenueFieldsVisibility() {
+    venueFields.hidden = !!placeLinkSelect.value;
+  }
+  placeLinkSelect.addEventListener("change", refreshVenueFieldsVisibility);
+  refreshVenueFieldsVisibility();
+
+  const notesInput = Global.el("textarea", { rows: "2" });
+  notesInput.value = activity.notes || "";
+  const costInput = Global.el("input", { type: "number", min: "0", step: "1", value: activity.cost ?? "" });
+  const confirmationInput = Global.el("input", { type: "text", value: activity.confirmation_number || "" });
+  const ratingInput = ratingInputElement(activity.rating);
+  const reviewInput = Global.el("textarea", { rows: "2", placeholder: "How this particular visit went" });
+  reviewInput.value = activity.review || "";
   const scheduledStartInput = Global.el("input", { type: "datetime-local", value: toDatetimeLocal(activity.scheduled_start) });
   const scheduledEndInput = Global.el("input", { type: "datetime-local", value: toDatetimeLocal(activity.scheduled_end) });
   // Convenience: filling in just the start time auto-fills a plausible end
@@ -444,24 +429,21 @@ function buildActivityEditPane(card, activity, { onChanged, onDeleted, onUnlink,
     scheduledEndInput.value = toDatetimeLocal(addMinutesISO(scheduledStartInput.value, 60));
   });
 
-  const fields = Global.el("div", { class: "item-fields" }, [
-    Global.el("div", { class: "field" }, [Global.el("label", { text: "Name" }), nameInput]),
-    Global.el("div", { class: "field" }, [Global.el("label", { text: "Category" }), categorySelect]),
-    Global.el("div", { class: "field" }, [Global.el("label", { text: "Description" }), descInput]),
-    Global.el("div", { class: "field" }, [Global.el("label", { text: "Notes" }), notesInput]),
-    Global.el("div", { class: "field" }, [Global.el("label", { text: "URL" }), urlInput]),
-    Global.el("div", { class: "field" }, [Global.el("label", { text: "Address" }), addressInput]),
-    Global.el("div", { class: "field" }, [Global.el("label", { text: "City" }), cityInput]),
-    Global.el("div", { class: "field" }, [Global.el("label", { text: "Phone" }), phoneInput]),
-    Global.el("div", { class: "field" }, [Global.el("label", { text: "Map link" }), mapLinkInput]),
-    Global.el("div", { class: "field" }, [Global.el("label", { text: "Cost ($)" }), costInput]),
-    Global.el("div", { class: "field" }, [Global.el("label", { text: "Confirmation #" }), confirmationInput]),
-    // Usually set by dragging onto a trip's agenda page rather than typed
-    // here, but editable directly too (e.g. to nudge a time or clear it).
-    Global.el("div", { class: "field" }, [Global.el("label", { text: "Scheduled start" }), scheduledStartInput]),
-    Global.el("div", { class: "field" }, [Global.el("label", { text: "Scheduled end" }), scheduledEndInput]),
-  ]);
-  pane.appendChild(fields);
+  pane.append(
+    Global.el("div", { class: "field" }, [Global.el("label", { text: "Place" }), placeLinkSelect]),
+    venueFields,
+    Global.el("div", { class: "item-fields" }, [
+      Global.el("div", { class: "field" }, [Global.el("label", { text: "Notes" }), notesInput]),
+      Global.el("div", { class: "field" }, [Global.el("label", { text: "Cost ($)" }), costInput]),
+      Global.el("div", { class: "field" }, [Global.el("label", { text: "Confirmation #" }), confirmationInput]),
+      Global.el("div", { class: "field" }, [Global.el("label", { text: "Rating" }), ratingInput]),
+      Global.el("div", { class: "field" }, [Global.el("label", { text: "Review" }), reviewInput]),
+      // Usually set by dragging onto a trip's agenda page rather than typed
+      // here, but editable directly too (e.g. to nudge a time or clear it).
+      Global.el("div", { class: "field" }, [Global.el("label", { text: "Scheduled start" }), scheduledStartInput]),
+      Global.el("div", { class: "field" }, [Global.el("label", { text: "Scheduled end" }), scheduledEndInput]),
+    ])
+  );
 
   const actions = Global.el("div", { class: "item-actions" });
 
@@ -479,9 +461,9 @@ function buildActivityEditPane(card, activity, { onChanged, onDeleted, onUnlink,
     class: "save-btn",
     text: "Save",
     onclick: async () => {
-      const name = nameInput.value.trim();
-      if (!name) {
-        Global.showMessage("Name is required.", "error");
+      const linkedPlaceId = placeLinkSelect.value ? Number(placeLinkSelect.value) : null;
+      if (!linkedPlaceId && !nameInput.value.trim()) {
+        Global.showMessage("Name is required unless you link to a place.", "error");
         return;
       }
       const costValue = costInput.value.trim();
@@ -489,27 +471,43 @@ function buildActivityEditPane(card, activity, { onChanged, onDeleted, onUnlink,
         Global.showMessage("Set both a scheduled start and end, or clear both.", "error");
         return;
       }
+      // Visit-specific fields always go through, linked or not. Venue
+      // fields (name/category/description/url/address/city/phone/map)
+      // only go through when NOT linking to a place - sending them
+      // alongside a place_id would immediately overwrite the dormant
+      // own_* columns crud.update_activity just cleared, right back to
+      // whatever's still sitting in these inputs (see models.Activity's
+      // docstring on why those columns go dormant, not deleted, once
+      // linked).
+      const payload = {
+        place_id: linkedPlaceId,
+        notes: notesInput.value.trim() || null,
+        cost: costValue === "" ? null : Number(costValue),
+        confirmation_number: confirmationInput.value.trim() || null,
+        rating: ratingInput.value,
+        review: reviewInput.value.trim() || null,
+        scheduled_start: datetimeLocalToISO(scheduledStartInput.value),
+        scheduled_end: datetimeLocalToISO(scheduledEndInput.value),
+      };
+      if (!linkedPlaceId) {
+        Object.assign(payload, {
+          name: nameInput.value.trim(),
+          category_id: categorySelect.value ? Number(categorySelect.value) : null,
+          description: descInput.value.trim() || null,
+          url: urlInput.value.trim() || null,
+          address: addressInput.value.trim() || null,
+          city: cityInput.value.trim() || null,
+          phone_number: phoneInput.value.trim() || null,
+          map_link: mapLinkInput.value.trim() || null,
+        });
+      }
       try {
         const updated = await Global.fetchJSON(`${ACTIVITIES_API}/${activity.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name,
-            category_id: categorySelect.value ? Number(categorySelect.value) : null,
-            description: descInput.value.trim() || null,
-            notes: notesInput.value.trim() || null,
-            url: urlInput.value.trim() || null,
-            address: addressInput.value.trim() || null,
-            city: cityInput.value.trim() || null,
-            phone_number: phoneInput.value.trim() || null,
-            map_link: mapLinkInput.value.trim() || null,
-            cost: costValue === "" ? null : Number(costValue),
-            confirmation_number: confirmationInput.value.trim() || null,
-            scheduled_start: datetimeLocalToISO(scheduledStartInput.value),
-            scheduled_end: datetimeLocalToISO(scheduledEndInput.value),
-          }),
+          body: JSON.stringify(payload),
         });
-        Global.showMessage(`Saved "${name}".`, "success");
+        Global.showMessage(`Saved "${updated.name}".`, "success");
         // Fire-and-forget - picks up a newly-typed city for the shared
         // datalist right away, without waiting on it before the card swap
         // below (a stale datalist for a few moments isn't worth blocking on).
@@ -639,11 +637,15 @@ function renderScrapePreview(record) {
 // initial values for review before saving - nothing is ever auto-submitted.
 function newActivityFormElement({ tripId = null, tripCity = null, onCreated, prefill = null } = {}) {
   const form = Global.el("form", { class: "add-card hidden" });
+
+  // Same "link instead of typing venue details" control as the edit pane -
+  // see buildActivityEditPane for the full reasoning.
+  const placeLinkSelect = buildPlaceLinkSelect(null);
+
   const nameInput = Global.el("input", { type: "text", required: "required", placeholder: "e.g. Louvre Museum", value: prefill?.name || "" });
   const categorySelect = buildCategorySelect(null);
   const descInput = Global.el("textarea", { rows: "2", placeholder: "Optional notes" });
   descInput.value = prefill?.description || "";
-  const notesInput = Global.el("textarea", { rows: "2", placeholder: "Optional" });
   const urlInput = Global.el("input", { type: "url", placeholder: "https://...", value: prefill?.url || "" });
   const addressInput = Global.el("input", { type: "text", placeholder: "Optional", value: prefill?.address || "" });
   // Defaults to the trip's own city (most activities in a trip share one) -
@@ -652,14 +654,10 @@ function newActivityFormElement({ tripId = null, tripCity = null, onCreated, pre
   const cityInput = cityInputElement(tripCity);
   const phoneInput = Global.el("input", { type: "tel", placeholder: "Optional", value: prefill?.phone_number || "" });
   const mapLinkInput = Global.el("input", { type: "url", placeholder: "Optional", value: prefill?.map_link || "" });
-  const costInput = Global.el("input", { type: "number", min: "0", step: "1", placeholder: "Optional" });
-  const confirmationInput = Global.el("input", { type: "text", placeholder: "Optional" });
-
-  form.append(
+  const venueFields = Global.el("div", {}, [
     Global.el("div", { class: "field" }, [Global.el("label", { text: "Name *" }), nameInput]),
     Global.el("div", { class: "field" }, [Global.el("label", { text: "Category" }), categorySelect]),
     Global.el("div", { class: "field" }, [Global.el("label", { text: "Description" }), descInput]),
-    Global.el("div", { class: "field" }, [Global.el("label", { text: "Notes" }), notesInput]),
     Global.el("div", { class: "field" }, [Global.el("label", { text: "URL" }), urlInput]),
     Global.el("div", { class: "field-row" }, [
       Global.el("div", { class: "field" }, [Global.el("label", { text: "Address" }), addressInput]),
@@ -669,6 +667,23 @@ function newActivityFormElement({ tripId = null, tripCity = null, onCreated, pre
       Global.el("div", { class: "field" }, [Global.el("label", { text: "Phone" }), phoneInput]),
       Global.el("div", { class: "field" }, [Global.el("label", { text: "Map link" }), mapLinkInput]),
     ]),
+  ]);
+
+  function refreshVenueFieldsVisibility() {
+    venueFields.hidden = !!placeLinkSelect.value;
+    nameInput.required = !placeLinkSelect.value;
+  }
+  placeLinkSelect.addEventListener("change", refreshVenueFieldsVisibility);
+  refreshVenueFieldsVisibility();
+
+  const notesInput = Global.el("textarea", { rows: "2", placeholder: "Optional" });
+  const costInput = Global.el("input", { type: "number", min: "0", step: "1", placeholder: "Optional" });
+  const confirmationInput = Global.el("input", { type: "text", placeholder: "Optional" });
+
+  form.append(
+    Global.el("div", { class: "field" }, [Global.el("label", { text: "Place" }), placeLinkSelect]),
+    venueFields,
+    Global.el("div", { class: "field" }, [Global.el("label", { text: "Notes" }), notesInput]),
     Global.el("div", { class: "field-row" }, [
       Global.el("div", { class: "field" }, [Global.el("label", { text: "Cost ($)" }), costInput]),
       Global.el("div", { class: "field" }, [Global.el("label", { text: "Confirmation #" }), confirmationInput]),
@@ -680,32 +695,41 @@ function newActivityFormElement({ tripId = null, tripCity = null, onCreated, pre
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
+    const linkedPlaceId = placeLinkSelect.value ? Number(placeLinkSelect.value) : null;
     const name = nameInput.value.trim();
-    if (!name) return;
+    if (!linkedPlaceId && !name) return;
     const costValue = costInput.value.trim();
+    const payload = {
+      notes: notesInput.value.trim() || null,
+      cost: costValue === "" ? null : Number(costValue),
+      confirmation_number: confirmationInput.value.trim() || null,
+      trip_id: tripId,
+    };
+    if (linkedPlaceId) {
+      payload.place_id = linkedPlaceId;
+    } else {
+      Object.assign(payload, {
+        name,
+        category_id: categorySelect.value ? Number(categorySelect.value) : null,
+        description: descInput.value.trim() || null,
+        url: urlInput.value.trim() || null,
+        address: addressInput.value.trim() || null,
+        city: cityInput.value.trim() || null,
+        phone_number: phoneInput.value.trim() || null,
+        map_link: mapLinkInput.value.trim() || null,
+      });
+    }
     try {
       const created = await Global.fetchJSON(ACTIVITIES_API, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name,
-          category_id: categorySelect.value ? Number(categorySelect.value) : null,
-          description: descInput.value.trim() || null,
-          notes: notesInput.value.trim() || null,
-          url: urlInput.value.trim() || null,
-          address: addressInput.value.trim() || null,
-          city: cityInput.value.trim() || null,
-          phone_number: phoneInput.value.trim() || null,
-          map_link: mapLinkInput.value.trim() || null,
-          cost: costValue === "" ? null : Number(costValue),
-          confirmation_number: confirmationInput.value.trim() || null,
-          trip_id: tripId,
-        }),
+        body: JSON.stringify(payload),
       });
       form.reset();
       cityInput.value = tripCity || ""; // form.reset() would otherwise blank the trip-city default back out
+      refreshVenueFieldsVisibility();
       form.classList.add("hidden");
-      Global.showMessage(`Added "${name}".`, "success");
+      Global.showMessage(`Added "${created.name}".`, "success");
       loadCitiesCache(); // fire-and-forget - same reasoning as the edit-pane save above
       if (onCreated) onCreated(created);
     } catch (err) {

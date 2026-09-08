@@ -14,7 +14,10 @@
 // mouse/touch/pen behind one code path instead. See makeDraggable below.
 
 const ACTIVITIES_API = `${API_BASE}/activities`;
-const CATEGORIES_API = `${API_BASE}/categories`;
+// CATEGORIES_API/categories/categoriesById/loadCategoriesCache moved to
+// common.js - drives both the color tint on agenda entries (see
+// agendaEntryElement) and the Unscheduled section's category filter (see
+// initUnscheduledCategoryFilter).
 
 const params = new URLSearchParams(window.location.search);
 const tripId = Number(params.get("id"));
@@ -23,14 +26,6 @@ let trip = null;
 let activities = [];
 let stays = [];
 
-// Fetched once into module state, same idea as activity-shared.js's
-// loadCategoriesCache (not shared directly - this page declares its own
-// ACTIVITIES_API too, so pulling in activity-shared.js whole would collide
-// on that const). Drives both the color tint on agenda entries (see
-// agendaEntryElement) and the Unscheduled section's category filter (see
-// initUnscheduledCategoryFilter).
-let categories = [];
-let categoriesById = {};
 // Category ids (as strings, matching Global.buildMultiSelect's values)
 // currently checked in the Unscheduled filter - empty means "show all".
 let unscheduledCategoryFilter = new Set();
@@ -38,13 +33,6 @@ let unscheduledCategoryFilter = new Set();
 // "category" (sortActivitiesByCategory, common.js) - independent of the
 // filter above: filter narrows which activities show, this reorders them.
 let unscheduledSortMode = "default";
-
-async function loadCategoriesCache() {
-  categories = await Global.fetchJSON(CATEGORIES_API);
-  categoriesById = {};
-  for (const category of categories) categoriesById[category.id] = category;
-  return categories;
-}
 
 // --- lock toggle -----------------------------------------------------------
 //

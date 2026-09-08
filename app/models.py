@@ -48,7 +48,12 @@ class Category(Base):
     # only ever has to touch the two swapped rows.
     sort_order = Column(Integer, nullable=False, default=0, server_default="0")
 
-    activities = relationship("Activity", back_populates="category")
+    # back_populates targets Activity.own_category (not "category" - that
+    # name is a resolving @property on Activity now, see Activity's
+    # docstring, so the real FK-backed relationship it wraps had to move to
+    # a different attribute name).
+    activities = relationship("Activity", back_populates="own_category")
+    places = relationship("Place", back_populates="category")
 
 
 class TripActivity(Base):
@@ -107,15 +112,48 @@ class Trip(Base):
 
 
 class Activity(Base):
+    """A specific planned/actual visit - "we're going to Cacao on
+    Thursday at 7pm," not "Cacao" itself. Venue details (name, address,
+    url, category, ...) can either live on the activity directly (the
+    original, still fully supported shape) or be delegated to a linked
+    Place (see place_id) - a reusable, cross-trip record of the place
+    itself, so a spot you love isn't re-typed from scratch every time you
+    plan another visit there.
+
+    The delegation is implemented as a set of properties (name, address,
+    city, etc. below) shadowing renamed "own_*" columns - own_name holds
+    this activity's own data (used whenever place_id is null, exactly the
+    original behavior), while the property resolves to place.name instead
+    once place_id is set. This is deliberately transparent to every
+    existing caller: schemas.py's Pydantic serialization, distance.py's
+    address_query_for, export.py's row builder, and the whole frontend all
+    just read activity.address/activity.city/etc. same as before and get
+    the right value either way, with no awareness that a Place might be
+    involved. See crud.promote_activity_to_place for how an activity
+    starts using a place instead of its own columns (copies own_* into a
+    new Place, then clears own_* here), and crud.update_activity for the
+    same clearing when an activity is linked to an *existing* place via a
+    plain PATCH.
+
+    rating/review are per-visit, deliberately never delegated to a place -
+    two visits to the same place can go completely differently (a great
+    first time, a disappointing second), so each activity keeps its own
+    independent rating even when it shares a place with others. Place has
+    its own separate rating/review for "our overall take on this place."
+    """
+
     __tablename__ = "activities"
 
     id = Column(Integer, primary_key=True)
-    name = Column(String, nullable=False)
-    description = Column(Text, nullable=True)
-    url = Column(String, nullable=True)
+    # nullable despite representing a required-when-unlinked field (see the
+    # name property below and schemas.ActivityCreate's validator) - a
+    # place-linked activity legitimately has no own_name at all.
+    own_name = Column("name", String, nullable=True)
+    own_description = Column("description", Text, nullable=True)
+    own_url = Column("url", String, nullable=True)
     cost = Column(Integer, nullable=True)
     confirmation_number = Column(String, nullable=True)
-    address = Column(String, nullable=True)
+    own_address = Column("address", String, nullable=True)
     # Explicit, not parsed out of `address` - real addresses in this app
     # come from too many different sources (manual entry, Yelp scrapes,
     # Instagram imports) with wildly inconsistent formatting for a comma-
@@ -123,12 +161,17 @@ class Activity(Base):
     # building this: some have no comma at all, some have the city as the
     # last segment rather than the second). Lets you filter to "what did we
     # skip in a city we're revisiting" on activities.html.
-    city = Column(String, nullable=True)
-    phone_number = Column(String, nullable=True)
-    map_link = Column(String, nullable=True)
+    own_city = Column("city", String, nullable=True)
+    own_phone_number = Column("phone_number", String, nullable=True)
+    own_map_link = Column("map_link", String, nullable=True)
     # Separate from `description` (which tends to hold a scraped/copied
-    # summary of the place) - notes is for the user's own reminders.
+    # summary of the place) - notes is for the user's own reminders about
+    # this specific visit.
     notes = Column(Text, nullable=True)
+    # 1-5, this visit's own rating - see the class docstring on why this
+    # never delegates to a linked place's rating.
+    rating = Column(Integer, nullable=True)
+    review = Column(Text, nullable=True)
     done = Column(Boolean, nullable=False, default=False)
     # Independent of done, same reasoning as Stay.archived - a trip you
     # archive cascades to archive its activities (see crud.update_trip),
@@ -137,7 +180,9 @@ class Activity(Base):
     # an activity can't sensibly be both, but nothing enforces that at the
     # schema level - it's just never set that way in practice.
     archived = Column(Boolean, nullable=False, default=False)
-    category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
+    own_category_id = Column("category_id", Integer, ForeignKey("categories.id"), nullable=True)
+
+    place_id = Column(Integer, ForeignKey("places.id"), nullable=True)
 
     # Both optional - null means "not yet scheduled," which is what puts it
     # in the agenda page's unscheduled sidebar rather than a day column.
@@ -145,6 +190,12 @@ class Activity(Base):
     scheduled_start = Column(DateTime, nullable=True)
     scheduled_end = Column(DateTime, nullable=True)
 
+    # This activity's own scrape state - always independent of any linked
+    # place (a place gets its own separate scrape_status/scraped_* columns
+    # for scraping its own url, see Place below). Once place_id is set
+    # these just go dormant/unused - scraping a preview for a place-linked
+    # activity happens on the place instead, since that's where the url
+    # now lives.
     scrape_status = Column(Enum(ScrapeStatus), nullable=False, default=ScrapeStatus.not_started)
     scraped_title = Column(String, nullable=True)
     scraped_description = Column(String, nullable=True)
@@ -158,7 +209,74 @@ class Activity(Base):
     trips = relationship(
         "Trip", secondary="trip_activities", back_populates="activities"
     )
-    category = relationship("Category", back_populates="activities")
+    own_category = relationship("Category", back_populates="activities", foreign_keys=[own_category_id])
+    place = relationship("Place", back_populates="activities")
+
+    # --- delegating properties - see the class docstring -------------------
+
+    @property
+    def name(self):
+        return self.place.name if self.place_id else self.own_name
+
+    @name.setter
+    def name(self, value):
+        self.own_name = value
+
+    @property
+    def description(self):
+        return self.place.description if self.place_id else self.own_description
+
+    @description.setter
+    def description(self, value):
+        self.own_description = value
+
+    @property
+    def url(self):
+        return self.place.url if self.place_id else self.own_url
+
+    @url.setter
+    def url(self, value):
+        self.own_url = value
+
+    @property
+    def address(self):
+        return self.place.address if self.place_id else self.own_address
+
+    @address.setter
+    def address(self, value):
+        self.own_address = value
+
+    @property
+    def city(self):
+        return self.place.city if self.place_id else self.own_city
+
+    @city.setter
+    def city(self, value):
+        self.own_city = value
+
+    @property
+    def phone_number(self):
+        return self.place.phone_number if self.place_id else self.own_phone_number
+
+    @phone_number.setter
+    def phone_number(self, value):
+        self.own_phone_number = value
+
+    @property
+    def map_link(self):
+        return self.place.map_link if self.place_id else self.own_map_link
+
+    @map_link.setter
+    def map_link(self, value):
+        self.own_map_link = value
+
+    @property
+    def category_id(self):
+        return self.place.category_id if self.place_id else self.own_category_id
+
+    @category_id.setter
+    def category_id(self, value):
+        self.own_category_id = value
 
 
 class LocationDistance(Base):
@@ -200,6 +318,72 @@ class LocationDistance(Base):
             name="uq_location_distance_pair_mode",
         ),
     )
+
+
+class Place(Base):
+    """A real-world place - a restaurant, cafe, museum, shop - that
+    exists independent of any one trip or visit, so it can be pulled from
+    a reusable list and linked to multiple activities over time instead of
+    re-entering the same name/address/url every time you plan another
+    visit there. Not trip-scoped at all (unlike Stay/TravelSegment/
+    DogCareBooking) - the same place is just as relevant on a future trip
+    back to the same city.
+
+    rating/review here are this place's own overall rating ("our take on
+    this place in general") - see Activity's rating/review for the
+    separate per-visit rating, which can differ from this one (a great
+    first visit, a worse second one) and from each other.
+    """
+
+    __tablename__ = "places"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+    url = Column(String, nullable=True)
+    address = Column(String, nullable=True)
+    city = Column(String, nullable=True)
+    phone_number = Column(String, nullable=True)
+    map_link = Column(String, nullable=True)
+    category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
+
+    rating = Column(Integer, nullable=True)
+    review = Column(Text, nullable=True)
+
+    scrape_status = Column(Enum(ScrapeStatus), nullable=False, default=ScrapeStatus.not_started)
+    scraped_title = Column(String, nullable=True)
+    scraped_description = Column(String, nullable=True)
+    scraped_image_url = Column(String, nullable=True)
+    scraped_at = Column(DateTime, nullable=True)
+    scrape_error = Column(String, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    category = relationship("Category", back_populates="places")
+    activities = relationship("Activity", back_populates="place")
+    images = relationship("PlaceImage", back_populates="place", cascade="all, delete-orphan")
+
+
+class PlaceImage(Base):
+    """One photo attached to a Place - plain binary storage (same pattern
+    as DogCareBooking's invoice/instructions), no processing of any kind;
+    the browser does all the scaling/thumbnailing when it's rendered as an
+    <img>. One-to-many (unlike DogCareBooking's single invoice/
+    instructions slots) since a place can reasonably have several photos,
+    ordered by upload time (created_at) - oldest first, no separate
+    sort_order column since manual reordering isn't a need here yet."""
+
+    __tablename__ = "place_images"
+
+    id = Column(Integer, primary_key=True)
+    place_id = Column(Integer, ForeignKey("places.id"), nullable=False)
+    filename = Column(String, nullable=False)
+    content_type = Column(String, nullable=False)
+    data = Column(LargeBinary, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    place = relationship("Place", back_populates="images")
 
 
 class Stay(Base):

@@ -423,12 +423,19 @@ let activitySortMode = "default";
 // filter - there's no managed City table, just whatever strings are
 // actually in use (see loadCitiesCache in activity-shared.js).
 let cityFilter = new Set();
+// Rating values (as strings, matching Global.buildMultiSelect's values) -
+// empty means "show all", same convention as cityFilter. Only this visit's
+// own rating is checked here, never a linked place's - see
+// models.Activity's docstring on why the two are independent.
+let ratingFilter = new Set();
 
 function renderActivityLists() {
   for (const id of ["activities-list", "done-activities-list", "archived-activities-list"]) {
     document.getElementById(id).innerHTML = "";
   }
-  const filtered = cityFilter.size === 0 ? loadedActivities : loadedActivities.filter((a) => a.city && cityFilter.has(a.city));
+  const filtered = loadedActivities.filter(
+    (a) => (cityFilter.size === 0 || (a.city && cityFilter.has(a.city))) && (ratingFilter.size === 0 || (a.rating && ratingFilter.has(String(a.rating))))
+  );
   document.getElementById("city-filtered-empty").hidden = !(loadedActivities.length > 0 && filtered.length === 0);
 
   const ordered = activitySortMode === "category" ? sortActivitiesByCategory(filtered, categoriesById) : filtered;
@@ -479,6 +486,22 @@ function initCityFilter() {
   mount.appendChild(widget);
 }
 
+function initRatingFilter() {
+  const mount = document.getElementById("rating-filter-mount");
+  mount.innerHTML = "";
+  mount.appendChild(
+    Global.buildMultiSelect({
+      options: [5, 4, 3, 2, 1].map((n) => ({ value: n, label: starsDisplay(n) })),
+      selected: [...ratingFilter],
+      placeholder: "All ratings",
+      onChange: (selected) => {
+        ratingFilter = new Set(selected);
+        renderActivityLists();
+      },
+    })
+  );
+}
+
 function initActivitySort() {
   const select = document.getElementById("activity-sort-select");
   select.value = activitySortMode;
@@ -509,11 +532,12 @@ if (prefillParam || editIdParam) {
 }
 
 async function init() {
-  // Categories have to be loaded before anything that builds a category
-  // <select> (the add form below, and every activity card/edit-pane) -
-  // otherwise those selects would render with no options and never pick
-  // up categories that show up after the fact.
+  // Categories/places have to be loaded before anything that builds a
+  // category <select> or place-link <select> (the add form below, and
+  // every activity card/edit-pane) - otherwise those selects would render
+  // with no options and never pick up ones that show up after the fact.
   await loadCategoriesCache();
+  await loadPlacesCache();
   await loadCitiesCache();
 
   initAddActivityToggle(document.getElementById("add-activity-container"), {
@@ -532,6 +556,7 @@ async function init() {
   initCategoryManager();
   initActivitySort();
   initCityFilter();
+  initRatingFilter();
 
   if (prefill) Global.showMessage(`Filled in from ${prefill.url ? Global.domainFromUrl(prefill.url) || "clipped page" : "clipped page"} - review and save.`, "success");
 

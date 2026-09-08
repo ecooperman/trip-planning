@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Places - Trip Planning</title>
+  <link rel="stylesheet" href="{{ shared_assets_base }}/theme.css" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="app-header">
+    <h1>Places</h1>
+    <p class="subtitle">A reusable list of real places - rate one, add photos, then link activities to it on any trip instead of re-entering it from scratch.</p>
+  </header>
+
+  <div id="app-nav-mount"></div>
+
+  <main>
+    <div id="page-message" class="page-message hidden"></div>
+
+    <div id="add-place-container"></div>
+
+    <section>
+      <div class="list-header">
+        <h2>All places</h2>
+        <span id="place-count" class="list-count"></span>
+        <div id="place-city-filter-mount" class="list-header-controls"></div>
+        <div id="place-category-filter-mount" class="list-header-controls"></div>
+        <div id="place-rating-filter-mount" class="list-header-controls"></div>
+      </div>
+      <div id="places-list" class="item-list"></div>
+      <p id="places-empty-state" class="empty-state" hidden>No places yet - add one above, or promote an activity into one from the Activities page.</p>
+      <p id="places-filtered-empty" class="empty-state" hidden>No places match the selected filters.</p>
+    </section>
+    <div id="app-version"></div>
+  </main>
+
+
+  <script src="{{ shared_assets_base }}/theme.js"></script>
+  <script src="{{ shared_assets_base }}/icons.js"></script>
+  <script src="version.js"></script>
+  <script src="common.js"></script>
+  <script src="nav.js"></script>
+  <script src="places.js"></script>
+</body>
+</html>

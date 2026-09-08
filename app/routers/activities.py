@@ -107,3 +107,19 @@ def trigger_scrape(activity_id: int, db: Session = Depends(get_db)):
     if not activity.url:
         raise HTTPException(status_code=400, detail="Activity has no URL to scrape")
     return scrape_activity(db, activity_id, activity.url)
+
+
+@router.post("/{activity_id}/promote-to-place", response_model=schemas.Activity)
+def promote_to_place(activity_id: int, db: Session = Depends(get_db)):
+    """Turns this activity's own name/address/etc. into a new, reusable
+    Place, links the activity to it, and clears those columns here - see
+    crud.promote_activity_to_place. 400s if there's nothing to promote
+    (already place-linked, or has no name of its own to begin with)."""
+    activity = crud.get_activity(db, activity_id)
+    if activity is None:
+        raise HTTPException(status_code=404, detail="Activity not found")
+    if activity.place_id is not None:
+        raise HTTPException(status_code=400, detail="This activity is already linked to a place")
+    if not activity.own_name:
+        raise HTTPException(status_code=400, detail="This activity has no name of its own to turn into a place")
+    return crud.promote_activity_to_place(db, activity_id)

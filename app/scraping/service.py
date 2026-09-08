@@ -47,3 +47,13 @@ def scrape_stay(db: Session, stay_id: int, url: str) -> models.Stay:
             title=content.title, description=content.description, image_url=content.image_url,
         )
     return crud.save_stay_scrape_result(db, stay_id, status, error=error)
+
+
+def scrape_place(db: Session, place_id: int, url: str) -> models.Place:
+    status, content, error = _resolve(url)
+    if content is not None:
+        return crud.save_place_scrape_result(
+            db, place_id, status,
+            title=content.title, description=content.description, image_url=content.image_url,
+        )
+    return crud.save_place_scrape_result(db, place_id, status, error=error)

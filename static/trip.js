@@ -1367,10 +1367,12 @@ async function init() {
   loadDogCareBookings();
   loadDogCareCoverage();
 
-  // Categories have to be loaded before anything that builds a category
-  // <select> (the add form below, and every activity card/edit-pane) -
-  // see activities.js's init for the same reasoning.
+  // Categories/places have to be loaded before anything that builds a
+  // category <select> or place-link <select> (the add form below, and
+  // every activity card/edit-pane) - see activities.js's init for the
+  // same reasoning.
   await loadCategoriesCache();
+  await loadPlacesCache();
   await loadCitiesCache();
 
   initAttachActivityPicker();

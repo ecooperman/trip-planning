@@ -111,6 +111,37 @@
   font-weight: 500;
 }
 
+/* starsDisplay's read-only "★★★☆☆" badge (common.js) - gold rather than
+   one of the semantic pill colors above, the one badge here meant to read
+   as an actual rating at a glance rather than a status label. */
+.item-badge-rating {
+  flex-shrink: 0;
+  font-size: 13px;
+  letter-spacing: 1px;
+  color: #b8860b;
+}
+
+/* ratingInputElement's clickable 5-star picker (common.js) - Place and
+   Activity edit panes both use this for their own rating field. */
+.rating-input {
+  display: flex;
+  gap: 2px;
+}
+
+.rating-star {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--border);
+}
+
+.rating-star.filled {
+  color: #b8860b;
+}
+
 /* --- view pane: read-only display shown by default, with an Edit button
    that swaps to the (hidden-until-then) edit form --- */
 
@@ -375,26 +406,65 @@
   min-width: 160px;
 }
 
-/* --- "Duplicate to trip..." picker in an activity's action row - same
-   trigger-button-reveals-a-select-row shape as .attach-existing above --- */
+/* --- place photo gallery (places.js) - a small thumbnail grid, plain
+   <img> tags reading straight from GET /api/places/{id}/photos/{id}, no
+   client-side resizing either (the browser scales the thumbnail box via
+   object-fit; the full original bytes are what a click-through/download
+   would get). --- */
 
-.duplicate-picker-row {
+.place-photo-gallery {
+  margin-top: 14px;
+}
+
+.place-photo-grid {
   display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.place-photo-item {
+  position: relative;
+  width: 84px;
+  height: 84px;
+}
+
+.place-photo-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.place-photo-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: none;
+  background: var(--danger);
+  color: #fff;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.place-photo-upload {
+  display: flex;
+  align-items: center;
   gap: 8px;
   flex-wrap: wrap;
 }
 
-/* Same reason .add-card.hidden exists in theme.css: .duplicate-picker-row's
-   own `display: flex` and the shared `.hidden { display: none; }` have
-   equal specificity, and this rule comes later in the cascade, so without
-   this explicit override the row would win and stay visible. */
-.duplicate-picker-row.hidden {
-  display: none;
-}
-
-.duplicate-picker-row select {
-  flex: 1;
-  min-width: 160px;
+.place-photo-upload input[type="file"] {
+  /* Same override as .attachment-controls input[type=file] (trip.js's dog
+     -care attachments) - the generic `input { display: block; width: 100%
+     }` rule makes a file input look broken if left at full width. */
+  display: inline-block;
+  width: auto;
 }
 
 /* --- agenda page: horizontally-scrolling day columns, each an ordered
