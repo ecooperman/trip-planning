@@ -6,6 +6,18 @@
 
 const PLACES_API = `${API_BASE}/places`;
 
+// ?id=<place id> - the "🔗 View place →" link on a place-linked activity
+// (activity-shared.js) lands here with that one place already expanded and
+// scrolled to, same deep-link pattern as activities.html's own ?edit=.
+const pageParams = new URLSearchParams(window.location.search);
+let deepLinkPlaceId = pageParams.get("id") ? Number(pageParams.get("id")) : null;
+if (pageParams.get("id")) {
+  // Dropped from the URL so refreshing the page doesn't re-jump every time.
+  const url = new URL(window.location.href);
+  url.searchParams.delete("id");
+  window.history.replaceState({}, "", url);
+}
+
 // --- category select (read-only picker, not the manager - that lives on
 // activities.html, same split Activity's own form already uses) ----------
 
@@ -320,7 +332,19 @@ function renderPlaceList() {
       (categoryFilter.size === 0 || (p.category_id && categoryFilter.has(String(p.category_id)))) &&
       (ratingFilter.size === 0 || (p.rating && ratingFilter.has(String(p.rating))))
   );
-  for (const place of filtered) list.appendChild(placeCardElement(place));
+  let deepLinkCard = null;
+  for (const place of filtered) {
+    const isDeepLinkTarget = place.id === deepLinkPlaceId;
+    const card = placeCardElement(place, { expanded: isDeepLinkTarget });
+    list.appendChild(card);
+    if (isDeepLinkTarget) deepLinkCard = card;
+  }
+  if (deepLinkCard) deepLinkCard.scrollIntoView({ block: "center" });
+  // Cleared unconditionally, not just on a match - same reasoning as
+  // activities.js's pendingEditActivityId: a lingering id here would
+  // wrongly auto-expand+scroll again on some later, unrelated re-render
+  // (e.g. after a filter changes) once it's already been used once.
+  deepLinkPlaceId = null;
 
   document.getElementById("place-count").textContent = loadedPlaces.length ? `${loadedPlaces.length}` : "";
   document.getElementById("places-empty-state").hidden = loadedPlaces.length !== 0;

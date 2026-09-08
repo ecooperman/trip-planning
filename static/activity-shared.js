@@ -257,11 +257,18 @@ function buildActivityViewPane(card, activity, { onChanged, onDeleted, onUnlink,
     // still disagree with the place's overall rating.
     viewField("Rating", starsDisplay(activity.rating)),
     viewField("Review", activity.review),
-    activity.place_id ? viewField("Place", "🔗 Linked - shared details (name/address/etc.) live on the Places page.") : null,
   ].filter(Boolean);
   if (fields.length) pane.appendChild(Global.el("div", { class: "view-fields" }, fields));
 
   const links = Global.el("div", { class: "view-links" });
+  // Place-linked activities get their name/address/etc. from this place
+  // (see models.Activity's docstring) - this is the one way back to it,
+  // since nothing else on this card names it explicitly. First in the row
+  // (not appended after the others) since it's the most relevant action
+  // once linked, not an afterthought.
+  if (activity.place_id) {
+    links.appendChild(Global.el("a", { href: `places.html?id=${activity.place_id}`, class: "secondary-btn", text: "🔗 View place →" }));
+  }
   if (activity.url) links.appendChild(Global.el("a", { href: activity.url, target: "_blank", rel: "noopener noreferrer", class: "secondary-btn", text: "Visit website →" }));
   if (activity.map_link) links.appendChild(Global.el("a", { href: activity.map_link, target: "_blank", rel: "noopener noreferrer", class: "secondary-btn", text: "Open map →" }));
   if (activity.phone_number) links.appendChild(Global.el("a", { href: `tel:${activity.phone_number}`, class: "secondary-btn", text: `Call ${activity.phone_number}` }));
