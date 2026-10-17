@@ -3,10 +3,10 @@
 // code (activity-shared.js) as the activities section on trip.html; the
 // only difference is no tripId is passed, so nothing auto-associates.
 //
-// Also the landing page for the trip-clipper Chrome extension: it opens
+// Also the landing page for the web-capture Chrome extension: it opens
 // this page with a base64url-encoded ?prefill= param carrying whatever it
 // read off the page you were looking at (see
-// ../trip-clipper-chrome-extension), which just pre-fills and auto-opens
+// ../chrome-extensions/web-capture-chrome-extension), which just pre-fills and auto-opens
 // the add-activity form below - nothing is ever saved without you clicking
 // "Add activity" yourself.
 

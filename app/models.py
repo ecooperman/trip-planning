@@ -42,7 +42,7 @@ class Category(Base):
     optionally belong to - zero, one, or several at once (see
     ActivityCategory/PlaceCategory below) - same shape as time-management's
     Category, except here it's optional and multi-valued: activities are
-    often created quickly (tap-to-create on the agenda, the trip-clipper
+    often created quickly (tap-to-create on the agenda, the web-capture
     extension) without picking one, and a place can genuinely be more than
     one thing at once (a cafe that's also a bookstore), so forcing a single
     choice was the wrong constraint, not just a missing nice-to-have."""

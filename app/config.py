@@ -12,11 +12,11 @@ PORT = 8060
 ENV = os.environ.get("APP_ENV", "local")
 SHARED_ASSETS_BASE = "https://static.evancooperman.com" if ENV == "production" else "http://127.0.0.1:8070"
 
-# Used by app/ai_extraction.py to turn an Instagram caption into candidate
-# activities. Never committed - set directly in the local shell for dev, and
-# on the droplet in the shared secrets file every app reads
-# (/etc/personal-apps/shared.env, see DEPLOYMENT.md). Import-from-
-# Instagram fails with a clear 503 (not a silent no-op) if this is unset.
+# Used by app/stay_extraction.py to read lodging listings into candidate
+# stays. Never committed - set directly in the local shell for dev, and on
+# the droplet in the shared secrets file every app reads
+# (/etc/personal-apps/shared.env, see DEPLOYMENT.md). The stay importer
+# fails with a clear 503 (not a silent no-op) if this is unset.
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 
 # Used by app/distance.py (Google Distance Matrix API) to compute real

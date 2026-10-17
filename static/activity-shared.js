@@ -281,7 +281,7 @@ function buildActivityViewPane(card, activity, { onChanged, onDeleted, onUnlink,
     pane.appendChild(Global.el("p", { class: "note", text: "No details yet - click Edit to add some." }));
   }
 
-  // Yelp actively blocks server-side fetches (see the trip-clipper
+  // Yelp actively blocks server-side fetches (see the web-capture
   // extension for how Yelp data actually gets in) - showing a "Fetch
   // preview" button that would just always fail isn't useful.
   if (activity.url && !isYelpUrl(activity.url)) {
@@ -643,7 +643,7 @@ function renderScrapePreview(record) {
 // The create form itself - identical on both pages. tripId, when given,
 // auto-associates the new activity to that trip on save (the only
 // behavioral difference between the two call sites). `prefill` (from the
-// trip-clipper extension's ?prefill= param, see activities.js) fills in
+// web-capture extension's ?prefill= param, see activities.js) fills in
 // initial values for review before saving - nothing is ever auto-submitted.
 function newActivityFormElement({ tripId = null, tripCity = null, onCreated, prefill = null } = {}) {
   const form = Global.el("form", { class: "add-card hidden" });
@@ -769,7 +769,7 @@ function newActivityFormElement({ tripId = null, tripCity = null, onCreated, pre
 // Wires up the "+ Add Activity" toggle button + form together, the same
 // show/cancel behavior used across every add-card in this app. Pass
 // `prefill` + `autoOpen: true` to land with the form already open and
-// filled in (the trip-clipper extension flow).
+// filled in (the web-capture extension flow).
 function initAddActivityToggle(container, { tripId = null, tripCity = null, onCreated, prefill = null, autoOpen = false } = {}) {
   const showBtn = Global.el("button", { type: "button", class: "add-toggle", text: "+ Add Activity" });
   const form = newActivityFormElement({

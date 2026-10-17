@@ -12,7 +12,6 @@ from .routers import (
     categories,
     distance,
     dog_care,
-    instagram_import,
     places,
     plan_links,
     stay_compare,
@@ -94,7 +93,6 @@ app.include_router(stay_compare.router)
 app.include_router(travel.router)
 app.include_router(dog_care.router)
 app.include_router(categories.router)
-app.include_router(instagram_import.router)
 app.include_router(plan_links.router)
 app.include_router(distance.router)
 

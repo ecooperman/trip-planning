@@ -3,7 +3,7 @@ structured fields for a candidate Stay, via the Claude API. Used by the
 "add stays from URLs" bulk importer and the per-stay "re-read from
 screenshot" action (see routers/stay_compare.py and static/trip.js).
 
-Like ai_extraction.py's Instagram seeds, this is a first pass meant to be
+This is a first pass meant to be
 eyeballed and corrected on the trip page - a stay it imports is flagged
 needs_review until saved. A missing or approximate number here is an
 expected outcome to fix by hand, not a bug to chase out.
@@ -17,7 +17,7 @@ from pydantic import BaseModel
 
 from .config import ANTHROPIC_API_KEY
 
-# Not claude-opus-5 (what ai_extraction.py uses): listing pages are long
+# Not Opus: listing pages are long
 # and imported a dozen at a time, and pulling labelled facts out of
 # provided text is well within Sonnet's range at several times the speed
 # and a fraction of the cost per URL.
