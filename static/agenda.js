@@ -457,21 +457,25 @@ function agendaEntryElement(activity, { nextActivity = null } = {}) {
   // still a pointerdown-based drag handle (see makeDraggable below), so
   // any nested control (the resize buttons below) has to stopPropagation
   // on its own pointerdown or it'd also start a drag.
-  const category = activity.category_id ? categoriesById[activity.category_id] : null;
+  // Only tint the whole row when there's exactly one category to tint
+  // with (see soleCategoryFor, common.js) - zero or several both fall
+  // back to per-category badges instead (categoryBadgeElements), no
+  // arbitrary "first one wins" pick.
+  const soleCategory = soleCategoryFor(activity.category_ids);
   // Once something's actually scheduled into a day column, a full-color
   // row is too loud sitting next to a bunch of other differently-colored
-  // entries - a small badge is enough there, just present if you look for
-  // it. Still-unscheduled entries keep the same tinted-row treatment as
+  // entries - small badges are enough there, just present if you look for
+  // them. Still-unscheduled entries keep the same tinted-row treatment as
   // activities.html/trip.html (see .item-card.has-category) - that's
   // exactly the view you're scanning while picking which cafe to drag in,
   // so the color earns its keep there.
   const isScheduled = !!activity.scheduled_start;
   const entry = Global.el("div", {
-    class: "agenda-entry" + (activity.done ? " done" : "") + (category ? (isScheduled ? " has-category-badge" : " has-category-fill") : ""),
+    class: "agenda-entry" + (activity.done ? " done" : "") + (soleCategory ? (isScheduled ? " has-category-badge" : " has-category-fill") : ""),
   });
-  if (category) {
-    entry.style.setProperty("--cat-color", category.color);
-    entry.style.setProperty("--cat-text-color", category.text_color === "light" ? "#ffffff" : "#000000");
+  if (soleCategory) {
+    entry.style.setProperty("--cat-color", soleCategory.color);
+    entry.style.setProperty("--cat-text-color", soleCategory.text_color === "light" ? "#ffffff" : "#000000");
   }
 
   if (activity.scheduled_start) {
@@ -488,16 +492,15 @@ function agendaEntryElement(activity, { nextActivity = null } = {}) {
   entry.appendChild(Global.el("div", { class: "agenda-entry-name", text: activity.name }));
 
   const badges = Global.el("div", { class: "agenda-entry-badges" });
-  // Neutral pill + a small colored dot, not the category's own color as a
-  // fill - deliberately quiet here (see the has-category-badge/-fill split
-  // above), tucked in among the other small badges rather than announced
-  // by the row itself.
-  if (category && isScheduled) {
-    const categoryBadge = Global.el("span", { class: "item-badge agenda-entry-category-badge" }, [
-      Global.el("span", { class: "agenda-entry-category-dot", "aria-hidden": "true" }),
-      category.name,
-    ]);
-    badges.appendChild(categoryBadge);
+  // Neutral pill + a small colored dot per category, not the category's
+  // own color as a fill - deliberately quiet here (see the
+  // has-category-badge/-fill split above), tucked in among the other
+  // small badges rather than announced by the row itself. Shown once
+  // scheduled (soleCategory already gets the full-row tint instead when
+  // unscheduled), or always when there's more than one category (multiple
+  // categories never get the whole-row tint, scheduled or not).
+  if (isScheduled ? activity.category_ids?.length : activity.category_ids?.length > 1) {
+    for (const badge of categoryBadgeElements(activity.category_ids)) badges.appendChild(badge);
   }
   const cost = formatCost(activity.cost);
   if (cost) badges.appendChild(Global.el("span", { class: "item-badge item-badge-cost", text: cost }));
@@ -705,7 +708,7 @@ function renderUnscheduledList() {
   const filtered =
     unscheduledCategoryFilter.size === 0
       ? unscheduled
-      : unscheduled.filter((a) => a.category_id && unscheduledCategoryFilter.has(String(a.category_id)));
+      : unscheduled.filter((a) => a.category_ids.some((id) => unscheduledCategoryFilter.has(String(id))));
   // Distinct from unscheduled-empty above ("nothing unscheduled at all")
   // so "everything's scheduled" and "your filter matched nothing" read as
   // different states rather than the same generic empty message.

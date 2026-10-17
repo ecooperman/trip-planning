@@ -674,7 +674,13 @@ body.agenda-locked .agenda-slot {
    of its own - the class exists on the element only as a hook, kept for
    parity with -fill above and in case that changes). */
 
-.agenda-entry-category-badge {
+/* categoryBadgeElements (common.js) - one badge per category, used
+   wherever an item has more than one (or, on agenda.html, wherever a
+   single category isn't given the full-tint treatment - see
+   has-category-fill/-badge above). --cat-color is set per-badge (each one
+   can be a different category/color), not inherited from an outer
+   .item-card/.agenda-entry the way the whole-tint treatment's is. */
+.category-badge {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -682,7 +688,7 @@ body.agenda-locked .agenda-slot {
   background: var(--muted-bg);
 }
 
-.agenda-entry-category-dot {
+.category-dot {
   flex-shrink: 0;
   width: 7px;
   height: 7px;
@@ -1218,4 +1224,356 @@ body.agenda-locked .agenda-entry-resize {
   .trip-header-top {
     align-items: center;
   }
+}
+
+/* ===================================================================
+   Candidate-stay comparison (compare.html) + the price worksheet and
+   review flag on stay cards (trip.js). Everything below is specific to
+   sorting through lodging options before booking.
+   =================================================================== */
+
+/* "Ace numbers came from an AI read, nobody's checked them" - on the card
+   summary (small pill) and inside the view pane (a full-width hint). */
+.item-badge-review {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 10px;
+  white-space: nowrap;
+  color: var(--warning);
+  background: var(--warning-bg);
+}
+
+.review-hint {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--warning);
+  background: var(--warning-bg);
+}
+
+/* The <details> block of importer-filled price/size fields in a stay's
+   edit pane - visually set off from the always-shown name/date fields. */
+.stay-worksheet {
+  margin: 6px 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 10px;
+}
+
+.stay-worksheet > summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 6px 0;
+}
+
+.stay-worksheet[open] > summary {
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.field-hint,
+.section-hint {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.section-hint {
+  margin: 0 0 12px;
+}
+
+/* compare.html criteria editor -------------------------------------- */
+
+.add-card-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.add-card-inline input[type="text"] {
+  flex: 1 1 220px;
+}
+
+.inline-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.inline-field input[type="number"] {
+  width: 64px;
+}
+
+.criterion-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.criterion-label-input {
+  flex: 1 1 220px;
+}
+
+.criterion-weight-input {
+  width: 56px;
+}
+
+.criterion-row-actions {
+  display: inline-flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.icon-btn {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  border-radius: 6px;
+  width: 28px;
+  height: 28px;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.icon-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.icon-btn.danger {
+  color: var(--danger);
+}
+
+.link-btn {
+  border: none;
+  background: none;
+  padding: 0;
+  margin-left: 8px;
+  font-size: 11px;
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* the matrix ------------------------------------------------------- */
+
+.matrix-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+table.matrix {
+  border-collapse: collapse;
+  font-size: 13px;
+  min-width: 100%;
+}
+
+table.matrix th,
+table.matrix td {
+  border-bottom: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+table.matrix th {
+  background: var(--muted-bg);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+table.matrix th.num,
+table.matrix td.num {
+  text-align: right;
+  white-space: nowrap;
+}
+
+table.matrix .sticky-col {
+  position: sticky;
+  left: 0;
+  background: var(--bg);
+  z-index: 1;
+  min-width: 150px;
+}
+
+table.matrix th.sticky-col {
+  z-index: 3;
+  background: var(--muted-bg);
+}
+
+table.matrix tr.must-fail .sticky-col {
+  background: color-mix(in srgb, var(--danger) 8%, var(--bg));
+}
+
+table.matrix tr.must-fail {
+  background: color-mix(in srgb, var(--danger) 6%, transparent);
+}
+
+.crit-col .crit-name {
+  display: block;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 12px;
+  color: var(--text);
+  max-width: 130px;
+}
+
+.crit-col .crit-meta {
+  display: block;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.matrix-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.est-flag {
+  font-size: 10px;
+  color: var(--muted);
+}
+
+td.verdict-td {
+  text-align: center;
+  padding: 4px;
+}
+
+.verdict-cell {
+  width: 100%;
+  min-width: 48px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 0;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.verdict-unknown {
+  background: var(--muted-bg);
+  color: var(--muted);
+}
+
+.verdict-yes {
+  background: var(--success-bg);
+  color: var(--success);
+  border-color: color-mix(in srgb, var(--success) 40%, var(--border));
+}
+
+.verdict-partial {
+  background: var(--warning-bg);
+  color: var(--warning);
+  border-color: color-mix(in srgb, var(--warning) 40%, var(--border));
+}
+
+.verdict-no {
+  background: color-mix(in srgb, var(--danger) 12%, var(--bg));
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 40%, var(--border));
+}
+
+.score-cell {
+  min-width: 90px;
+}
+
+.score-pct {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.score-pct.muted {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.score-bar {
+  margin-top: 4px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--muted-bg);
+  overflow: hidden;
+}
+
+.score-bar-fill {
+  height: 100%;
+  background: var(--accent);
+}
+
+.must-fail-tag {
+  display: block;
+  margin-top: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--danger);
+  white-space: normal;
+}
+
+/* --- trip.html: import from plans (social-planning) --- */
+
+.plan-import-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 360px;
+  overflow-y: auto;
+  margin-bottom: 12px;
+}
+
+.plan-import-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: normal;
+}
+
+.plan-import-row input[type="checkbox"] {
+  width: auto;
+  flex-shrink: 0;
+}
+
+.plan-import-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.plan-import-meta {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.plan-import-row.in-trip {
+  opacity: 0.55;
+  cursor: default;
 }

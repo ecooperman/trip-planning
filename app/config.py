@@ -25,3 +25,11 @@ ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 # ANTHROPIC_API_KEY above. The distance tool fails with a clear 503 (not a
 # silent no-op) if this is unset.
 GOOGLE_MAPS_API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY")
+
+# social-planning (the "plans" app) - trips pulls plans from it and the two
+# share Activity.plan_id links (see routers/plan_links.py). API calls go
+# server-to-server on 127.0.0.1, same as finances -> trips, which sidesteps
+# Cloudflare Access entirely. PLANS_PUBLIC_URL is only for links a browser
+# follows back to a plan.
+PLANS_API_BASE = os.environ.get("PLANS_API_BASE", "http://127.0.0.1:8020")
+PLANS_PUBLIC_URL = "https://plans.evancooperman.com" if ENV == "production" else "http://127.0.0.1:8020"

@@ -109,6 +109,11 @@ function buildTripHeaderViewPane() {
     viewField("Location", currentTrip.location),
     viewField("City", currentTrip.city),
     viewField("Dates", dateLabel || "Not set"),
+    // Only worth showing once it's been set to something other than the
+    // default - it only matters for comparing stays on an international trip.
+    currentTrip.home_currency && currentTrip.home_currency !== "USD"
+      ? viewField("Home currency", currentTrip.home_currency)
+      : null,
   ].filter(Boolean);
   pane.appendChild(Global.el("div", { class: "view-fields" }, fields));
 
@@ -122,6 +127,10 @@ function buildTripHeaderEditPane() {
   const cityInput = cityInputElement(currentTrip.city);
   const startInput = Global.el("input", { type: "date", value: Global.toISODate(currentTrip.start_date) });
   const endInput = Global.el("input", { type: "date", value: Global.toISODate(currentTrip.end_date) });
+  // What stay costs are compared in on compare.html - a foreign listing's
+  // price is converted to this via the per-stay FX rate. Leave USD for a
+  // domestic trip.
+  const currencyInput = Global.el("input", { type: "text", maxlength: "3", value: currentTrip.home_currency || "USD", placeholder: "USD" });
 
   pane.appendChild(
     Global.el("div", { class: "item-fields" }, [
@@ -129,6 +138,7 @@ function buildTripHeaderEditPane() {
       Global.el("div", { class: "field" }, [Global.el("label", { text: "City" }), cityInput]),
       Global.el("div", { class: "field" }, [Global.el("label", { text: "Start date" }), startInput]),
       Global.el("div", { class: "field" }, [Global.el("label", { text: "End date" }), endInput]),
+      Global.el("div", { class: "field" }, [Global.el("label", { text: "Home currency" }), currencyInput]),
     ])
   );
 
@@ -158,6 +168,7 @@ function buildTripHeaderEditPane() {
             city: cityInput.value.trim() || null,
             start_date: Global.dateInputToISO(startInput.value),
             end_date: Global.dateInputToISO(endInput.value),
+            home_currency: currencyInput.value.trim().toUpperCase() || "USD",
           }),
         });
         Global.showMessage("Trip saved.", "success");
@@ -221,8 +232,15 @@ function stayCardElement(stay, { expanded = false } = {}) {
   const dateLabel = formatDateRange(stay.start_date, stay.end_date);
   if (dateLabel) summary.appendChild(Global.el("span", { class: "item-badge item-badge-date", text: dateLabel }));
   const costLabel = formatCost(stay.cost);
-  if (costLabel) summary.appendChild(Global.el("span", { class: "item-badge item-badge-cost", text: costLabel }));
+  if (costLabel) {
+    summary.appendChild(Global.el("span", { class: "item-badge item-badge-cost", text: costLabel }));
+  } else if (stay.estimated_total != null) {
+    // No confirmed cost yet - show the worksheet's estimate instead, so a
+    // candidate's ballpark is visible without opening the card.
+    summary.appendChild(Global.el("span", { class: "item-badge item-badge-cost", text: `~${formatCost(stay.estimated_total)} est.` }));
+  }
   if (stay.booked) summary.appendChild(Global.el("span", { class: "item-badge item-badge-booked", text: "Booked" }));
+  if (stay.needs_review) summary.appendChild(Global.el("span", { class: "item-badge item-badge-review", text: "Review" }));
   if (stay.archived) summary.appendChild(Global.el("span", { class: "item-badge item-badge-archived", text: "Archived" }));
 
   summary.appendChild(Global.el("span", { class: "item-chevron", "aria-hidden": "true", text: "▸" }));
@@ -248,13 +266,45 @@ function buildStayViewEdit(card, stay) {
   return wrap;
 }
 
+// A "2 bd · 1.5 ba · sleeps 4" line from whichever of those a stay has.
+function formatStayRooms(stay) {
+  const parts = [];
+  if (stay.bedrooms != null) parts.push(`${stay.bedrooms} bd`);
+  if (stay.bathrooms != null) parts.push(`${stay.bathrooms} ba`);
+  if (stay.sleeps != null) parts.push(`sleeps ${stay.sleeps}`);
+  return parts.join(" · ") || null;
+}
+
+// The raw price as listed (before FX / nights), e.g. "€180 / night + €90 fees".
+function formatStayListedPrice(stay) {
+  const ccy = stay.listing_currency ? `${stay.listing_currency} ` : "$";
+  const bits = [];
+  if (stay.nightly_price != null) bits.push(`${ccy}${stay.nightly_price.toLocaleString()} / night`);
+  if (stay.total_price != null) bits.push(`${ccy}${stay.total_price.toLocaleString()} total`);
+  if (stay.extra_fees != null) bits.push(`+ ${ccy}${stay.extra_fees.toLocaleString()} fees`);
+  return bits.join(" ") || null;
+}
+
 function buildStayViewPane(card, stay) {
   const pane = Global.el("div", { class: "view-pane" });
 
+  if (stay.needs_review) {
+    pane.appendChild(Global.el("div", { class: "review-hint" }, [
+      "These details were auto-filled from the listing and haven't been checked. Open Edit to confirm or fix them.",
+    ]));
+  }
+
+  const estLabel = stay.estimated_total != null
+    ? `${formatCost(stay.estimated_total)}${stay.cost == null ? " (estimated)" : ""}`
+    : null;
   const fields = [
     viewField("Description", stay.description),
     viewField("Address", stay.address),
-    viewField("Cost", formatCost(stay.cost)),
+    viewField("Rooms", formatStayRooms(stay)),
+    viewField("Listed price", formatStayListedPrice(stay)),
+    stay.fx_rate != null ? viewField("FX rate", `× ${stay.fx_rate} → ${(currentTrip && currentTrip.home_currency) || "USD"}`) : null,
+    viewField("Est. trip total", estLabel),
+    viewField("Confirmed cost", formatCost(stay.cost)),
   ].filter(Boolean);
   if (fields.length) pane.appendChild(Global.el("div", { class: "view-fields" }, fields));
 
@@ -275,6 +325,7 @@ function buildStayViewPane(card, stay) {
   if (links.children.length) pane.appendChild(links);
 
   if (stay.url) pane.appendChild(buildStayScrapeSection(stay));
+  pane.appendChild(buildStayScreenshotControl(stay));
 
   const actions = Global.el("div", { class: "item-actions" });
 
@@ -326,16 +377,47 @@ function buildStayEditPane(card, stay) {
   const bookedInput = Global.el("input", { type: "checkbox" });
   bookedInput.checked = stay.booked;
 
+  // Price worksheet - the fields the URL/screenshot importer fills. Tucked
+  // in a <details> so the common case (name/dates/cost) stays uncluttered;
+  // opened by default when there's anything in it to check.
+  const currencyInput = Global.el("input", { type: "text", maxlength: "3", value: stay.listing_currency || "", placeholder: (currentTrip && currentTrip.home_currency) || "USD" });
+  const nightlyInput = Global.el("input", { type: "number", min: "0", step: "0.01", value: stay.nightly_price ?? "" });
+  const totalInput = Global.el("input", { type: "number", min: "0", step: "0.01", value: stay.total_price ?? "" });
+  const feesInput = Global.el("input", { type: "number", min: "0", step: "0.01", value: stay.extra_fees ?? "" });
+  const fxInput = Global.el("input", { type: "number", min: "0", step: "0.0001", value: stay.fx_rate ?? "" });
+  const bedroomsInput = Global.el("input", { type: "number", min: "0", step: "1", value: stay.bedrooms ?? "" });
+  const bathroomsInput = Global.el("input", { type: "number", min: "0", step: "0.5", value: stay.bathrooms ?? "" });
+  const sleepsInput = Global.el("input", { type: "number", min: "0", step: "1", value: stay.sleeps ?? "" });
+
+  const hasWorksheetData = [stay.listing_currency, stay.nightly_price, stay.total_price, stay.extra_fees, stay.fx_rate, stay.bedrooms, stay.bathrooms, stay.sleeps].some((v) => v != null);
+  const worksheet = Global.el("details", { class: "stay-worksheet" }, [
+    Global.el("summary", { text: "Price & size worksheet" }),
+    Global.el("div", { class: "item-fields" }, [
+      Global.el("div", { class: "field" }, [Global.el("label", { text: "Listing currency" }), currencyInput]),
+      Global.el("div", { class: "field" }, [Global.el("label", { text: "FX rate (× to home)" }), fxInput]),
+      Global.el("div", { class: "field" }, [Global.el("label", { text: "Per night" }), nightlyInput]),
+      Global.el("div", { class: "field" }, [Global.el("label", { text: "All-in total (if listed)" }), totalInput]),
+      Global.el("div", { class: "field" }, [Global.el("label", { text: "Cleaning / service / tax" }), feesInput]),
+      Global.el("div", { class: "field" }, [Global.el("label", { text: "Bedrooms" }), bedroomsInput]),
+      Global.el("div", { class: "field" }, [Global.el("label", { text: "Bathrooms" }), bathroomsInput]),
+      Global.el("div", { class: "field" }, [Global.el("label", { text: "Sleeps" }), sleepsInput]),
+    ]),
+  ]);
+  if (hasWorksheetData) worksheet.open = true;
+
+  const numOrNull = (input) => (input.value.trim() === "" ? null : Number(input.value));
+
   pane.append(
     Global.el("div", { class: "item-fields" }, [
       Global.el("div", { class: "field" }, [Global.el("label", { text: "Name" }), nameInput]),
       Global.el("div", { class: "field" }, [Global.el("label", { text: "Description" }), descInput]),
       Global.el("div", { class: "field" }, [Global.el("label", { text: "URL" }), urlInput]),
       Global.el("div", { class: "field" }, [Global.el("label", { text: "Address" }), addressInput]),
-      Global.el("div", { class: "field" }, [Global.el("label", { text: "Cost ($)" }), costInput]),
+      Global.el("div", { class: "field" }, [Global.el("label", { text: "Confirmed cost ($)" }), costInput]),
       Global.el("div", { class: "field" }, [Global.el("label", { text: "Start date" }), startInput]),
       Global.el("div", { class: "field" }, [Global.el("label", { text: "End date" }), endInput]),
     ]),
+    worksheet,
     Global.el("label", { class: "checkbox-label" }, [bookedInput, document.createTextNode("Booked (this is the confirmed option)")])
   );
 
@@ -375,6 +457,16 @@ function buildStayEditPane(card, stay) {
             start_date: Global.dateInputToISO(startInput.value),
             end_date: Global.dateInputToISO(endInput.value),
             booked: bookedInput.checked,
+            listing_currency: currencyInput.value.trim().toUpperCase() || null,
+            nightly_price: numOrNull(nightlyInput),
+            total_price: numOrNull(totalInput),
+            extra_fees: numOrNull(feesInput),
+            fx_rate: numOrNull(fxInput),
+            bedrooms: numOrNull(bedroomsInput),
+            bathrooms: numOrNull(bathroomsInput),
+            sleeps: numOrNull(sleepsInput),
+            // Saving the edit pane counts as "I've looked at these".
+            needs_review: false,
           }),
         });
         Global.showMessage(`Saved "${name}".`, "success");
@@ -417,6 +509,39 @@ function buildStayScrapeSection(stay) {
   // renderScrapePreview lives in activity-shared.js - it only reads the
   // generic scrape_* fields, so it works unchanged for stays too.
   section.appendChild(renderScrapePreview(stay));
+  return section;
+}
+
+// "Re-read from screenshot" - the reliable fallback when a booking site
+// blocked the URL importer. Uploads an image to the extract endpoint,
+// which patches the worksheet fields and re-flags the stay for review.
+function buildStayScreenshotControl(stay) {
+  const section = Global.el("div", { class: "scrape-section" });
+  const fileInput = Global.el("input", { type: "file", accept: "image/png,image/jpeg,image/gif,image/webp", hidden: "hidden" });
+  const btn = Global.el("button", {
+    type: "button",
+    class: "scrape-btn",
+    text: "📸 Fill details from screenshot",
+    onclick: () => fileInput.click(),
+  });
+  fileInput.addEventListener("change", async () => {
+    const file = fileInput.files[0];
+    if (!file) return;
+    btn.disabled = true;
+    btn.textContent = "Reading screenshot…";
+    try {
+      const body = new FormData();
+      body.append("file", file);
+      await Global.fetchJSON(`${STAYS_API}/${stay.id}/extract-screenshot`, { method: "POST", body });
+      Global.showMessage(`Updated "${stay.name}" from the screenshot - check the details.`, "success");
+      loadStays();
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = "📸 Fill details from screenshot";
+      Global.showMessage(`Screenshot read failed: ${err.message}`, "error");
+    }
+  });
+  section.append(btn, fileInput);
   return section;
 }
 
@@ -529,6 +654,99 @@ function initAddStayForm() {
   });
 
   container.append(showBtn, form);
+}
+
+// Paste a batch of lodging listing URLs -> the server reads each, has
+// Claude pull out price/room/amenity facts, and creates one candidate
+// (un-booked, needs_review) stay per line. Anything it can't read still
+// becomes a stub with the link, so nothing pasted is lost.
+function initImportStaysForm() {
+  const container = document.getElementById("import-stays-container");
+  const showBtn = Global.el("button", { type: "button", class: "add-toggle", text: "⤵ Import stays from URLs" });
+
+  const urlsInput = Global.el("textarea", {
+    rows: "6",
+    placeholder: "One listing URL per line - Airbnb, Booking.com, VRBO, a hotel site…",
+  });
+  const form = Global.el("form", { class: "add-card hidden" }, [
+    Global.el("div", { class: "field" }, [
+      Global.el("label", { text: "Listing URLs" }),
+      urlsInput,
+      Global.el("p", { class: "field-hint", text: "Reads each page and drafts a stay from it. Prices and details land as a starting point to check, not gospel." }),
+    ]),
+    Global.el("div", { class: "item-actions" }),
+  ]);
+
+  const cancelBtn = Global.el("button", {
+    type: "button",
+    class: "cancel-btn",
+    text: "Cancel",
+    onclick: () => {
+      form.reset();
+      form.classList.add("hidden");
+      showBtn.classList.remove("hidden");
+    },
+  });
+  const submitBtn = Global.el("button", { type: "submit", class: "save-btn", text: "Import" });
+  form.querySelector(".item-actions").append(cancelBtn, submitBtn);
+
+  showBtn.addEventListener("click", () => {
+    form.classList.remove("hidden");
+    showBtn.classList.add("hidden");
+    urlsInput.focus();
+  });
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const urls = urlsInput.value.split(/\r?\n/).map((u) => u.trim()).filter(Boolean);
+    if (!urls.length) {
+      Global.showMessage("Paste at least one URL.", "error");
+      return;
+    }
+    submitBtn.disabled = true;
+    submitBtn.textContent = `Reading ${urls.length}…`;
+    try {
+      const result = await Global.fetchJSON(`${TRIPS_API}/${tripId}/stays/import`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ urls }),
+      });
+      const flagged = result.items.filter((i) => !i.ok);
+      const parts = [];
+      if (result.created) parts.push(`added ${result.created} new stay${result.created === 1 ? "" : "s"}`);
+      // Re-pasting a URL already on this trip refreshes that stay instead
+      // of creating a duplicate - see crud.find_stay_by_url.
+      if (result.updated) parts.push(`updated ${result.updated} already-imported stay${result.updated === 1 ? "" : "s"}`);
+      let msg = parts.length ? `Import done - ${parts.join(", ")}.` : "Import done - nothing new.";
+      if (flagged.length) msg += ` ${flagged.length} couldn't be read cleanly - check ${flagged.map((i) => i.name).join(", ")}.`;
+      Global.showMessage(msg, flagged.length ? "error" : "success");
+      form.reset();
+      form.classList.add("hidden");
+      showBtn.classList.remove("hidden");
+      loadStays();
+      loadCoverage();
+    } catch (err) {
+      Global.showMessage(`Import failed: ${err.message}`, "error");
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Import";
+    }
+  });
+
+  container.append(showBtn, form);
+}
+
+function renderCompareStaysLink() {
+  const mount = document.getElementById("compare-stays-link-mount");
+  if (!mount) return;
+  mount.innerHTML = "";
+  mount.appendChild(
+    Global.el("a", {
+      href: `compare.html?trip=${tripId}`,
+      class: "secondary-btn",
+      text: "⚖ Compare options →",
+    })
+  );
 }
 
 // --- travel (flights, trains, rental cars, ferries) -------------------------
@@ -1340,6 +1558,123 @@ function initAttachActivityPicker() {
   loadUnassociatedOptions();
 }
 
+// --- import from plans (social-planning) ----------------------------------------
+// Pull one or more plans from the plans app in as activities on this trip.
+// The server proxies to the plans app and records Activity.plan_id - see
+// routers/plan_links.py.
+
+const PLAN_LINKS_API = `${API_BASE}/plan-links`;
+
+function initImportPlansForm() {
+  const container = document.getElementById("import-plans-container");
+  const showBtn = Global.el("button", { type: "button", class: "add-toggle", text: "⤵ Import from plans" });
+  const locationSelect = Global.el("select", {});
+  const planList = Global.el("div", { class: "plan-import-list" });
+  const submitBtn = Global.el("button", { type: "submit", class: "save-btn", text: "Import selected" });
+  const cancelBtn = Global.el("button", { type: "button", class: "cancel-btn", text: "Cancel" });
+
+  const form = Global.el("form", { class: "add-card hidden" }, [
+    Global.el("div", { class: "field" }, [Global.el("label", { text: "Location" }), locationSelect]),
+    planList,
+    Global.el("div", { class: "item-actions" }, [cancelBtn, submitBtn]),
+  ]);
+
+  const close = () => {
+    form.classList.add("hidden");
+    showBtn.classList.remove("hidden");
+  };
+  cancelBtn.addEventListener("click", close);
+
+  async function loadPlans() {
+    planList.innerHTML = "";
+    planList.appendChild(Global.el("p", { class: "empty-state", text: "Loading…" }));
+    const query = new URLSearchParams({ trip_id: tripId });
+    if (locationSelect.value) query.set("location_id", locationSelect.value);
+    let plans;
+    try {
+      plans = await Global.fetchJSON(`${PLAN_LINKS_API}/plans?${query}`);
+    } catch (err) {
+      planList.innerHTML = "";
+      Global.showMessage(err.message, "error");
+      return;
+    }
+    planList.innerHTML = "";
+    if (!plans.length) {
+      planList.appendChild(Global.el("p", { class: "empty-state", text: "No plans in this location." }));
+      return;
+    }
+    for (const plan of plans) {
+      const box = Global.el("input", { type: "checkbox", value: String(plan.id) });
+      if (plan.in_trip) box.disabled = true;
+      const meta = [plan.location && plan.location.name, plan.url && Global.domainFromUrl(plan.url)].filter(Boolean).join(" · ");
+      planList.appendChild(
+        Global.el("label", { class: "plan-import-row" + (plan.in_trip ? " in-trip" : "") }, [
+          box,
+          Global.el("span", { class: "plan-import-name", text: plan.name }),
+          Global.el("span", { class: "plan-import-meta", text: plan.in_trip ? "already on this trip" : meta }),
+        ])
+      );
+    }
+  }
+
+  locationSelect.addEventListener("change", loadPlans);
+
+  showBtn.addEventListener("click", async () => {
+    form.classList.remove("hidden");
+    showBtn.classList.add("hidden");
+    let locations;
+    try {
+      locations = await Global.fetchJSON(`${PLAN_LINKS_API}/locations`);
+    } catch (err) {
+      Global.showMessage(err.message, "error");
+      close();
+      return;
+    }
+    const previous = locationSelect.value;
+    locationSelect.innerHTML = "";
+    locationSelect.appendChild(Global.el("option", { value: "", text: "All locations" }));
+    for (const loc of locations) {
+      locationSelect.appendChild(Global.el("option", { value: String(loc.id), text: loc.name }));
+    }
+    // Default to the plans location matching this trip's city (or title),
+    // ignoring case - the first time only; after that, keep the user's pick.
+    const guess = [currentTrip.city, currentTrip.location]
+      .filter(Boolean)
+      .map((s) => s.trim().toLowerCase());
+    const match = locations.find((loc) => guess.includes(loc.name.toLowerCase()));
+    locationSelect.value = previous || (match ? String(match.id) : "");
+    loadPlans();
+  });
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const planIds = [...planList.querySelectorAll("input:checked")].map((box) => Number(box.value));
+    if (!planIds.length) {
+      Global.showMessage("Pick at least one plan.", "error");
+      return;
+    }
+    submitBtn.disabled = true;
+    try {
+      const result = await Global.fetchJSON(`${PLAN_LINKS_API}/import`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plan_ids: planIds, trip_id: tripId }),
+      });
+      let msg = `Imported ${result.created} plan${result.created === 1 ? "" : "s"}.`;
+      if (result.skipped) msg += ` ${result.skipped} already on this trip.`;
+      Global.showMessage(msg, "success");
+      close();
+      loadActivities();
+    } catch (err) {
+      Global.showMessage(`Import failed: ${err.message}`, "error");
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+
+  container.append(showBtn, form);
+}
+
 // --- init ---------------------------------------------------------------------
 
 async function init() {
@@ -1358,6 +1693,8 @@ async function init() {
   loadCoverage();
 
   initAddStayForm();
+  initImportStaysForm();
+  renderCompareStaysLink();
   loadStays();
 
   initAddTravelSegmentForm();
@@ -1376,6 +1713,7 @@ async function init() {
   await loadCitiesCache();
 
   initAttachActivityPicker();
+  initImportPlansForm();
   initAddActivityToggle(document.getElementById("add-activity-container"), {
     tripId,
     tripCity: currentTrip.city,

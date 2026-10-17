@@ -7,15 +7,16 @@ const TRIPS_API = `${API_BASE}/trips`;
 const CITIES_API = `${API_BASE}/activities/cities`;
 const CATEGORIES_API = `${API_BASE}/categories`;
 
-// A user-managed label (name + color), optionally assigned to an activity
-// or place (category_id, nullable). Fetched once into module state rather
-// than nested on every activity/place from the API - every page that
-// needs it (activities.html/trip.html via activity-shared.js, agenda.html,
-// places.html) should `await loadCategoriesCache()` before building any
-// card/form that reads it. Used to live as a near-identical copy in both
-// activity-shared.js and agenda.js (they're never loaded on the same page,
-// so it never collided, but it was still the same code twice) - places.js
-// needing it too was the actual reason to finally share one copy here.
+// A user-managed label (name + color) an activity or place can carry zero,
+// one, or several of at once (category_ids). Fetched once into module
+// state rather than nested on every activity/place from the API - every
+// page that needs it (activities.html/trip.html via activity-shared.js,
+// agenda.html, places.html) should `await loadCategoriesCache()` before
+// building any card/form that reads it. Used to live as a near-identical
+// copy in both activity-shared.js and agenda.js (they're never loaded on
+// the same page, so it never collided, but it was still the same code
+// twice) - places.js needing it too was the actual reason to finally
+// share one copy here.
 let categories = [];
 let categoriesById = {};
 
@@ -24,6 +25,56 @@ async function loadCategoriesCache() {
   categoriesById = {};
   for (const category of categories) categoriesById[category.id] = category;
   return categories;
+}
+
+// Whether a list of category ids should tint a whole row/card a single
+// color (see .item-card.has-category/.agenda-entry.has-category-fill in
+// style.css) - only when there's exactly one to tint with. Zero categories
+// obviously has nothing to tint with; two or more has no single right
+// answer for which color wins, so those both fall back to per-category
+// badges instead (see categoryBadgeElements) rather than an arbitrary
+// "first one" choice.
+function soleCategoryFor(categoryIds) {
+  if (!categoryIds || categoryIds.length !== 1) return null;
+  return categoriesById[categoryIds[0]] || null;
+}
+
+// One small "● Name" badge per assigned category - deliberately quiet
+// (a colored dot, not the category's own color as the badge's own fill),
+// the same treatment agenda.js originally used for a *scheduled* entry
+// (too many differently-colored full-fill rows side by side got noisy) -
+// now the general fallback here whenever a row/card doesn't get the
+// single-category whole-tint treatment (soleCategoryFor returned null).
+function categoryBadgeElements(categoryIds) {
+  return (categoryIds || [])
+    .map((id) => categoriesById[id])
+    .filter(Boolean)
+    .map((category) => {
+      const badge = Global.el("span", { class: "item-badge category-badge" }, [
+        Global.el("span", { class: "category-dot", "aria-hidden": "true" }),
+        category.name,
+      ]);
+      badge.style.setProperty("--cat-color", category.color);
+      return badge;
+    });
+}
+
+// A multiselect of every category (see Global.buildMultiSelect,
+// shared-assets) for an activity's/place's own category_ids field -
+// returns a {element, getSelectedIds()} wrapper, the same shape
+// buildFilterableLocationPicker's pickers already use, rather than a
+// plain <select>'s .value (a multiselect has no single "value").
+function buildCategoryMultiSelect(selectedIds) {
+  let selected = new Set((selectedIds || []).map(String));
+  const element = Global.buildMultiSelect({
+    options: categories.map((c) => ({ value: c.id, label: c.name, color: c.color })),
+    selected: [...selected],
+    placeholder: "No categories",
+    onChange: (values) => {
+      selected = new Set(values);
+    },
+  });
+  return { element, getSelectedIds: () => [...selected].map(Number) };
 }
 
 // fetchJSON/el/showMessage/domainFromUrl/toISODate/dateInputToISO/
@@ -290,15 +341,20 @@ function locationQueryFor(record) {
 // Groups activities by category, in the same order Manage Categories shows
 // them in (category.sort_order - see activities.js's reorderCategory) -
 // reordering categories there changes this order too, everywhere it's
-// used. Uncategorized activities sort after every real category, keeping
-// their own relative order. A plain stable sort (native Array.prototype.sort
-// is stable in every engine this app runs in) rather than a bucket/group-by,
+// used. An activity with several categories sorts by whichever of them
+// comes first in that order (its best/earliest placement, not an average
+// or a "primary" pick - there's no such concept, see models.Category).
+// Uncategorized activities sort after every real category, keeping their
+// own relative order. A plain stable sort (native Array.prototype.sort is
+// stable in every engine this app runs in) rather than a bucket/group-by,
 // so ties (same category, or both uncategorized) keep whatever order the
 // list was already in - "default order" within each group, not re-shuffled.
-function sortActivitiesByCategory(activities, categoriesById) {
+function sortActivitiesByCategory(activities, categoriesByIdMap) {
   const orderFor = (activity) => {
-    const category = activity.category_id ? categoriesById[activity.category_id] : null;
-    return category ? category.sort_order : Infinity;
+    const orders = (activity.category_ids || [])
+      .map((id) => categoriesByIdMap[id]?.sort_order)
+      .filter((order) => order !== undefined);
+    return orders.length ? Math.min(...orders) : Infinity;
   };
   return activities.slice().sort((a, b) => orderFor(a) - orderFor(b));
 }

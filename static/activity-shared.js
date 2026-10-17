@@ -40,15 +40,9 @@ function buildPlaceLinkSelect(selectedId) {
   return select;
 }
 
-function buildCategorySelect(selectedId) {
-  const select = Global.el("select", {});
-  select.appendChild(Global.el("option", { value: "", text: "No category" }));
-  for (const category of categories) {
-    select.appendChild(Global.el("option", { value: String(category.id), text: category.name }));
-  }
-  select.value = selectedId ? String(selectedId) : "";
-  return select;
-}
+// buildCategorySelect (a single-value <select>) replaced by
+// buildCategoryMultiSelect (common.js) - an activity/place can carry more
+// than one category now, see models.Category's docstring.
 
 
 // Shared by activities.html and trip.html (see their loadActivities) - the
@@ -71,23 +65,28 @@ function partitionActivities(activities) {
 
 function activityCardElement(activity, opts = {}) {
   const { expanded = false, showTripBadge = false, onChanged, onDeleted, onUnlink, startInEdit = false } = opts;
-  const category = activity.category_id ? categoriesById[activity.category_id] : null;
+  // Only tints the whole card when there's exactly one category (see
+  // soleCategoryFor, common.js) - zero or several both fall back to
+  // per-category badges in the summary row instead (categoryBadgeElements,
+  // appended below), no arbitrary "first one wins" pick.
+  const soleCategory = soleCategoryFor(activity.category_ids);
   const card = Global.el("div", {
     class:
       "item-card" +
       (expanded ? " expanded" : "") +
       (activity.done ? " done" : "") +
       (activity.archived ? " archived" : "") +
-      (category ? " has-category" : ""),
+      (soleCategory ? " has-category" : ""),
     "data-id": activity.id,
   });
-  // The category, if any, tints the whole summary row background (see
-  // .item-card.has-category in style.css) - text color is a per-category
-  // dark/light choice (category.text_color) rather than computed, since
-  // legible contrast against an arbitrary picked color is subjective.
-  if (category) {
-    card.style.setProperty("--cat-color", category.color);
-    card.style.setProperty("--cat-text-color", category.text_color === "light" ? "#ffffff" : "#000000");
+  // The sole category, if there is exactly one, tints the whole summary
+  // row background (see .item-card.has-category in style.css) - text
+  // color is a per-category dark/light choice (category.text_color)
+  // rather than computed, since legible contrast against an arbitrary
+  // picked color is subjective.
+  if (soleCategory) {
+    card.style.setProperty("--cat-color", soleCategory.color);
+    card.style.setProperty("--cat-text-color", soleCategory.text_color === "light" ? "#ffffff" : "#000000");
   }
 
   // A <div role="button"> rather than a real <button> - the done checkbox
@@ -184,13 +183,17 @@ function activityCardElement(activity, opts = {}) {
     summary.appendChild(link);
   }
 
-  // The whole row is already tinted with the category's color (see
-  // .item-card.has-category in style.css), so naming it doesn't need its
-  // own box/background on top of that - just the name in plain text, in
-  // whichever text color (--cat-text-color, set above) reads legibly
-  // against that background.
-  if (category) {
-    summary.appendChild(Global.el("span", { class: "item-summary-category-label", text: category.name }));
+  if (soleCategory) {
+    // The whole row is already tinted with the category's color (see
+    // .item-card.has-category in style.css), so naming it doesn't need its
+    // own box/background on top of that - just the name in plain text, in
+    // whichever text color (--cat-text-color, set above) reads legibly
+    // against that background.
+    summary.appendChild(Global.el("span", { class: "item-summary-category-label", text: soleCategory.name }));
+  } else if (activity.category_ids && activity.category_ids.length > 1) {
+    // No single color to tint the row with (see soleCategoryFor) - a
+    // small badge per category instead, same fallback agenda.js uses.
+    for (const badge of categoryBadgeElements(activity.category_ids)) summary.appendChild(badge);
   }
 
   summary.appendChild(Global.el("span", { class: "item-chevron", "aria-hidden": "true", text: "▸" }));
@@ -241,12 +244,12 @@ function buildActivityViewPane(card, activity, { onChanged, onDeleted, onUnlink,
   const tripField = showTripBadge
     ? viewField("Trip", activity.trips && activity.trips[0] ? activity.trips[0].location : "Unassociated")
     : null;
-  const category = activity.category_id ? categoriesById[activity.category_id] : null;
+  const categoryNames = (activity.category_ids || []).map((id) => categoriesById[id]?.name).filter(Boolean);
 
   const fields = [
     viewField("Scheduled", formatScheduleBadge(activity.scheduled_start, activity.scheduled_end)),
     tripField,
-    viewField("Category", category ? category.name : null),
+    viewField("Categories", categoryNames.length ? categoryNames.join(", ") : null),
     viewField("Description", activity.description),
     viewField("Notes", activity.notes),
     viewField("Address", activity.address),
@@ -383,7 +386,7 @@ function buildActivityEditPane(card, activity, { onChanged, onDeleted, onUnlink,
   const placeLinkSelect = buildPlaceLinkSelect(activity.place_id);
 
   const nameInput = Global.el("input", { type: "text", value: activity.name, required: "required" });
-  const categorySelect = buildCategorySelect(activity.category_id);
+  const categoryPicker = buildCategoryMultiSelect(activity.category_ids);
   const descInput = Global.el("textarea", { rows: "2" });
   descInput.value = activity.description || "";
   const urlInput = Global.el("input", { type: "url", value: activity.url || "" });
@@ -402,7 +405,7 @@ function buildActivityEditPane(card, activity, { onChanged, onDeleted, onUnlink,
   const venueFields = Global.el("div", {}, [
     Global.el("div", { class: "item-fields" }, [
       Global.el("div", { class: "field" }, [Global.el("label", { text: "Name" }), nameInput]),
-      Global.el("div", { class: "field" }, [Global.el("label", { text: "Category" }), categorySelect]),
+      Global.el("div", { class: "field" }, [Global.el("label", { text: "Categories" }), categoryPicker.element]),
       Global.el("div", { class: "field" }, [Global.el("label", { text: "Description" }), descInput]),
       Global.el("div", { class: "field" }, [Global.el("label", { text: "URL" }), urlInput]),
       Global.el("div", { class: "field" }, [Global.el("label", { text: "Address" }), addressInput]),
@@ -499,7 +502,7 @@ function buildActivityEditPane(card, activity, { onChanged, onDeleted, onUnlink,
       if (!linkedPlaceId) {
         Object.assign(payload, {
           name: nameInput.value.trim(),
-          category_id: categorySelect.value ? Number(categorySelect.value) : null,
+          category_ids: categoryPicker.getSelectedIds(),
           description: descInput.value.trim() || null,
           url: urlInput.value.trim() || null,
           address: addressInput.value.trim() || null,
@@ -650,7 +653,7 @@ function newActivityFormElement({ tripId = null, tripCity = null, onCreated, pre
   const placeLinkSelect = buildPlaceLinkSelect(null);
 
   const nameInput = Global.el("input", { type: "text", required: "required", placeholder: "e.g. Louvre Museum", value: prefill?.name || "" });
-  const categorySelect = buildCategorySelect(null);
+  const categoryPicker = buildCategoryMultiSelect(null);
   const descInput = Global.el("textarea", { rows: "2", placeholder: "Optional notes" });
   descInput.value = prefill?.description || "";
   const urlInput = Global.el("input", { type: "url", placeholder: "https://...", value: prefill?.url || "" });
@@ -663,7 +666,7 @@ function newActivityFormElement({ tripId = null, tripCity = null, onCreated, pre
   const mapLinkInput = Global.el("input", { type: "url", placeholder: "Optional", value: prefill?.map_link || "" });
   const venueFields = Global.el("div", {}, [
     Global.el("div", { class: "field" }, [Global.el("label", { text: "Name *" }), nameInput]),
-    Global.el("div", { class: "field" }, [Global.el("label", { text: "Category" }), categorySelect]),
+    Global.el("div", { class: "field" }, [Global.el("label", { text: "Categories" }), categoryPicker.element]),
     Global.el("div", { class: "field" }, [Global.el("label", { text: "Description" }), descInput]),
     Global.el("div", { class: "field" }, [Global.el("label", { text: "URL" }), urlInput]),
     Global.el("div", { class: "field-row" }, [
@@ -682,6 +685,22 @@ function newActivityFormElement({ tripId = null, tripCity = null, onCreated, pre
   }
   placeLinkSelect.addEventListener("change", refreshVenueFieldsVisibility);
   refreshVenueFieldsVisibility();
+
+  // form.reset() (both the submit handler below and the Cancel button
+  // initAddActivityToggle wires up outside this function) only touches
+  // real form controls - Global.buildMultiSelect (theme.js) tracks its
+  // selection in its own closure Set, entirely independent of the
+  // checkboxes' visual checked state, so a native reset would leave
+  // categoryPicker.getSelectedIds() still returning the old selection
+  // even though the checkboxes themselves go blank. The form's own native
+  // "reset" event fires regardless of which caller triggered it, so
+  // hooking it here once covers both without either needing to know about
+  // categoryPicker directly. Reusing the widget's own "Clear" button click
+  // - not reimplementing that logic here - keeps this in sync with
+  // whatever buildMultiSelect's Clear actually does.
+  form.addEventListener("reset", () => {
+    categoryPicker.element.querySelector(".multiselect-clear")?.click();
+  });
 
   const notesInput = Global.el("textarea", { rows: "2", placeholder: "Optional" });
   const costInput = Global.el("input", { type: "number", min: "0", step: "1", placeholder: "Optional" });
@@ -717,7 +736,7 @@ function newActivityFormElement({ tripId = null, tripCity = null, onCreated, pre
     } else {
       Object.assign(payload, {
         name,
-        category_id: categorySelect.value ? Number(categorySelect.value) : null,
+        category_ids: categoryPicker.getSelectedIds(),
         description: descInput.value.trim() || null,
         url: urlInput.value.trim() || null,
         address: addressInput.value.trim() || null,
@@ -843,7 +862,7 @@ function locationRef(value) {
 // previously-selected locations that no longer match the new filter are
 // dropped from the selection rather than left selected-but-hidden. Stays
 // have no category, so they're only offered when no category filter is
-// active - same treatment as an activity with no category_id.
+// active - same treatment as an activity with no categories at all.
 function buildFilterableLocationPicker(getActivities, getStays, placeholder) {
   const wrap = Global.el("div", { class: "distance-picker" });
   const categoryFilterMount = Global.el("div", { class: "distance-picker-category-filter" });
@@ -858,7 +877,7 @@ function buildFilterableLocationPicker(getActivities, getStays, placeholder) {
     const filteredActivities =
       selectedCategoryIds.size === 0
         ? activities
-        : activities.filter((a) => a.category_id && selectedCategoryIds.has(String(a.category_id)));
+        : activities.filter((a) => a.category_ids.some((id) => selectedCategoryIds.has(String(id))));
     const activityOptions = filteredActivities.map((a) => ({ value: locationValue("activity", a.id), label: activityLabel(a) }));
     if (!getStays || selectedCategoryIds.size > 0) return activityOptions;
     const stayOptions = getStays().map((s) => ({ value: locationValue("stay", s.id), label: stayLabel(s) }));

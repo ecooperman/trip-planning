@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Compare Stays - Trip Planning</title>
+  <link rel="stylesheet" href="{{ shared_assets_base }}/theme.css" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="app-header">
+    <h1 id="page-title">Compare stays</h1>
+    <p class="subtitle">Score every lodging option for this trip against the things that matter, side by side.</p>
+  </header>
+
+  <div id="app-nav-mount"></div>
+
+  <main>
+    <a id="back-to-trip" href="/" class="back-link">← Back to trip</a>
+    <div id="page-message" class="page-message hidden"></div>
+
+    <section class="section">
+      <div class="list-header">
+        <h2>Criteria</h2>
+        <span id="criteria-count" class="list-count"></span>
+      </div>
+      <p class="section-hint">
+        Each criterion is a column in the grid. Weight scales how much it counts;
+        a must-have that isn't met flags the whole option regardless of score.
+      </p>
+      <div id="criteria-editor"></div>
+      <form id="add-criterion-form" class="add-card add-card-inline">
+        <input id="criterion-label" type="text" placeholder="e.g. Walkable to old town" required />
+        <label class="inline-field">Weight
+          <input id="criterion-weight" type="number" min="1" step="1" value="1" />
+        </label>
+        <label class="checkbox-label"><input id="criterion-must-have" type="checkbox" /> Must-have</label>
+        <button type="submit" class="save-btn">Add criterion</button>
+      </form>
+    </section>
+
+    <section class="section">
+      <div class="list-header">
+        <h2>Options</h2>
+        <span id="stay-count" class="list-count"></span>
+        <div class="list-header-controls">
+          <label class="inline-field">Sort
+            <select id="sort-select">
+              <option value="score">Best score</option>
+              <option value="cost">Lowest est. total</option>
+              <option value="name">Name</option>
+            </select>
+          </label>
+          <label class="checkbox-label"><input id="show-archived" type="checkbox" /> Show archived</label>
+        </div>
+      </div>
+      <div id="matrix-wrap" class="matrix-wrap"></div>
+      <p id="matrix-empty" class="empty-state" hidden>
+        No candidate stays yet - add some on the trip page (including the "Import stays from URLs" button).
+      </p>
+    </section>
+    <div id="app-version"></div>
+  </main>
+
+  <script src="{{ shared_assets_base }}/theme.js"></script>
+  <script src="{{ shared_assets_base }}/icons.js"></script>
+  <script src="version.js"></script>
+  <script src="common.js"></script>
+  <script src="nav.js"></script>
+  <script src="compare.js"></script>
+</body>
+</html>

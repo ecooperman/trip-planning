@@ -7,7 +7,19 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .config import SHARED_ASSETS_BASE
-from .routers import activities, categories, distance, dog_care, instagram_import, places, stays, travel, trips
+from .routers import (
+    activities,
+    categories,
+    distance,
+    dog_care,
+    instagram_import,
+    places,
+    plan_links,
+    stay_compare,
+    stays,
+    travel,
+    trips,
+)
 
 # Schema is owned by Alembic migrations (see migrations/) - run
 # `alembic upgrade head` before starting the app rather than relying on
@@ -56,6 +68,7 @@ app.get("/activities.html", response_class=HTMLResponse)(_render("activities.htm
 app.get("/places.html", response_class=HTMLResponse)(_render("places.html"))
 app.get("/trip.html", response_class=HTMLResponse)(_render("trip.html"))
 app.get("/agenda.html", response_class=HTMLResponse)(_render("agenda.html"))
+app.get("/compare.html", response_class=HTMLResponse)(_render("compare.html"))
 
 
 @app.middleware("http")
@@ -77,10 +90,12 @@ app.include_router(trips.router)
 app.include_router(activities.router)
 app.include_router(places.router)
 app.include_router(stays.router)
+app.include_router(stay_compare.router)
 app.include_router(travel.router)
 app.include_router(dog_care.router)
 app.include_router(categories.router)
 app.include_router(instagram_import.router)
+app.include_router(plan_links.router)
 app.include_router(distance.router)
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")

@@ -138,6 +138,8 @@ class TripBase(BaseModel):
     start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None
     archived: bool = False
+    # ISO 4217 code costs are compared in - see models.Trip.home_currency.
+    home_currency: str = "USD"
 
     @model_validator(mode="after")
     def _check_date_order(self):
@@ -156,6 +158,7 @@ class TripUpdate(BaseModel):
     start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None
     archived: Optional[bool] = None
+    home_currency: Optional[str] = None
 
     @model_validator(mode="after")
     def _check_date_order(self):
@@ -220,7 +223,10 @@ class PlaceBase(UrlValidator, RatingValidator):
     city: Optional[str] = None
     phone_number: Optional[str] = None
     map_link: Optional[str] = None
-    category_id: Optional[int] = None
+    # Zero, one, or several - see models.Category's docstring. Written via
+    # crud._set_place_categories, not a plain column, so create/update both
+    # exclude it from their generic setattr loop.
+    category_ids: List[int] = []
     # This place's own overall rating/review - see models.Place's
     # docstring on how this differs from a linked Activity's own rating.
     rating: Optional[int] = None
@@ -239,7 +245,7 @@ class PlaceUpdate(UrlValidator, RatingValidator):
     city: Optional[str] = None
     phone_number: Optional[str] = None
     map_link: Optional[str] = None
-    category_id: Optional[int] = None
+    category_ids: List[int] = []
     rating: Optional[int] = None
     review: Optional[str] = None
 
@@ -317,11 +323,17 @@ class ActivityBase(UrlValidator, CostValidator, ScheduleValidator, RatingValidat
     scheduled_end: Optional[datetime] = None
     done: bool = False
     archived: bool = False
-    category_id: Optional[int] = None
+    # Zero, one, or several - see models.Category's docstring. Written via
+    # crud._set_activity_categories, not a plain column, so create/update
+    # both exclude it from their generic setattr loop.
+    category_ids: List[int] = []
     # When set, this activity's name/description/url/address/city/
-    # phone_number/map_link/category_id all come from that place instead
+    # phone_number/map_link/category_ids all come from that place instead
     # of this activity's own columns - see models.Activity.
     place_id: Optional[int] = None
+    # The social-planning plan this was created from - set at creation
+    # only (deliberately absent from ActivityUpdate), see models.Activity.
+    plan_id: Optional[int] = None
 
 
 class ActivityCreate(ActivityBase):
@@ -354,7 +366,7 @@ class ActivityUpdate(UrlValidator, CostValidator, ScheduleValidator, RatingValid
     scheduled_end: Optional[datetime] = None
     done: Optional[bool] = None
     archived: Optional[bool] = None
-    category_id: Optional[int] = None
+    category_ids: List[int] = []
     place_id: Optional[int] = None
 
 
@@ -382,7 +394,22 @@ class Activity(ActivityBase):
 # ---------------------------------------------------------------------------
 
 
-class StayBase(UrlValidator, CostValidator):
+# The lodging price worksheet (see models.Stay) - amounts in
+# listing_currency, mostly seeded by the URL/screenshot importer and then
+# corrected by hand. Mixed into both the create and update stay schemas so
+# a plain PATCH can adjust any one of them.
+class StayWorksheetFields(BaseModel):
+    listing_currency: Optional[str] = None
+    nightly_price: Optional[float] = None
+    total_price: Optional[float] = None
+    extra_fees: Optional[float] = None
+    fx_rate: Optional[float] = None
+    bedrooms: Optional[int] = None
+    bathrooms: Optional[float] = None
+    sleeps: Optional[int] = None
+
+
+class StayBase(UrlValidator, CostValidator, StayWorksheetFields):
     name: str
     description: Optional[str] = None
     url: Optional[str] = None
@@ -403,7 +430,7 @@ class StayCreate(StayBase):
     trip_id: int
 
 
-class StayUpdate(UrlValidator, CostValidator):
+class StayUpdate(UrlValidator, CostValidator, StayWorksheetFields):
     name: Optional[str] = None
     description: Optional[str] = None
     url: Optional[str] = None
@@ -413,6 +440,9 @@ class StayUpdate(UrlValidator, CostValidator):
     end_date: Optional[datetime] = None
     booked: Optional[bool] = None
     archived: Optional[bool] = None
+    # Set false when saving the edit pane to clear the "AI-filled, unchecked"
+    # flag the bulk importer set - see models.Stay.needs_review.
+    needs_review: Optional[bool] = None
 
     @model_validator(mode="after")
     def _check_date_order(self):
@@ -427,6 +457,12 @@ class Stay(StayBase):
     id: int
     trip_id: int
     archived: bool
+    needs_review: bool = False
+    # Derived on models.Stay - nights in the date range, and the computed
+    # all-in cost in the trip's home currency (None until the worksheet has
+    # enough to compute one).
+    nights: int = 0
+    estimated_total: Optional[int] = None
     scrape_status: ScrapeStatus
     scraped_title: Optional[str] = None
     scraped_description: Optional[str] = None
@@ -435,6 +471,86 @@ class Stay(StayBase):
     scrape_error: Optional[str] = None
     created_at: datetime
     updated_at: datetime
+
+
+# --- bulk URL import + the stay comparison grid (compare.html) -------------
+
+
+class StayImportRequest(BaseModel):
+    # One lodging listing URL per entry - whitespace/blank lines are
+    # stripped router-side, so the client can just post a pasted blob split
+    # on newlines.
+    urls: List[str]
+
+
+class StayImportItem(BaseModel):
+    url: str
+    ok: bool
+    stay_id: Optional[int] = None
+    name: Optional[str] = None
+    # "updated" when this URL already had a candidate stay on the trip
+    # (see crud.find_stay_by_url) - re-importing refreshes it in place
+    # rather than creating a second candidate for the same listing.
+    action: Literal["created", "updated"] = "created"
+    # Why it went the way it did - an error message on failure, or a note
+    # like "couldn't read the page, added a stub to fill in" on a partial.
+    detail: Optional[str] = None
+
+
+class StayImportResult(BaseModel):
+    created: int
+    updated: int
+    items: List[StayImportItem]
+
+
+class StayCriterionBase(BaseModel):
+    label: str
+    weight: int = 1
+    must_have: bool = False
+
+
+class StayCriterionCreate(StayCriterionBase):
+    pass
+
+
+class StayCriterionUpdate(BaseModel):
+    label: Optional[str] = None
+    weight: Optional[int] = None
+    must_have: Optional[bool] = None
+    sort_order: Optional[int] = None
+
+
+class StayCriterion(StayCriterionBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    trip_id: int
+    sort_order: int
+
+
+class CriterionVerdictSet(BaseModel):
+    verdict: Literal["yes", "partial", "no", "unknown"]
+    note: Optional[str] = None
+
+
+class StayCriterionVerdict(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    stay_id: int
+    criterion_id: int
+    verdict: str
+    note: Optional[str] = None
+
+
+class StayComparison(BaseModel):
+    """Everything compare.html needs for one trip in a single call - the
+    criteria (columns), the candidate stays (rows), and every verdict cell
+    that's been filled in. The score is computed client-side from these."""
+
+    home_currency: str
+    criteria: List[StayCriterion]
+    stays: List[Stay]
+    verdicts: List[StayCriterionVerdict]
 
 
 # ---------------------------------------------------------------------------
@@ -640,3 +756,34 @@ class ActivityDistanceEntry(BaseModel):
     direction: Literal["to", "from"]
     walking: Optional[DistanceModeInfo] = None
     driving: Optional[DistanceModeInfo] = None
+
+
+# ---------------------------------------------------------------------------
+# Plan links (social-planning <-> trip-planning, see routers/plan_links.py)
+# ---------------------------------------------------------------------------
+
+
+class PlanImportRequest(BaseModel):
+    plan_ids: List[int]
+    # Optional - omit to create unassociated activities, same as
+    # ActivityCreate.trip_id.
+    trip_id: Optional[int] = None
+
+
+class PlanImportResult(BaseModel):
+    created: int
+    # Plans that already had an activity in the same place (this trip, or
+    # unassociated when trip_id is omitted) - re-importing is a no-op, not
+    # a duplicate.
+    skipped: int
+    activities: List[Activity]
+
+
+class PlanLink(BaseModel):
+    plan_id: int
+    activity_id: int
+    activity_name: Optional[str] = None
+    done: bool
+    archived: bool
+    trip_id: Optional[int] = None
+    trip_location: Optional[str] = None

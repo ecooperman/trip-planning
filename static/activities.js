@@ -13,8 +13,8 @@
 // --- category management (same pattern as time-management's admin.js) ------
 //
 // The one place categories get created/renamed/recolored/deleted -
-// assigning one to an activity happens on the activity's own form instead
-// (see buildCategorySelect in activity-shared.js), same split as
+// assigning them to an activity happens on the activity's own form instead
+// (see buildCategoryMultiSelect in common.js), same split as
 // time-management's Settings page vs. its task form.
 
 function textColorSelectElement(selected) {

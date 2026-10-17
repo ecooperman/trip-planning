@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Integer, LargeBinary, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, Enum, Float, ForeignKey, Integer, LargeBinary, String, Text, UniqueConstraint
 from sqlalchemy.orm import relationship
 
 from .database import Base
@@ -14,6 +14,21 @@ class ScrapeStatus(str, enum.Enum):
     unsupported = "unsupported"
 
 
+class CriterionVerdict(str, enum.Enum):
+    """How a candidate stay scores against one of a trip's comparison
+    criteria (see TripStayCriterion). Stored as a plain string column, not
+    a DB Enum - same lightweight treatment as LocationDistance.mode -
+    since the set is tiny and stable and the schema layer already
+    validates it. "unknown" is the implicit default for any (stay,
+    criterion) pair with no row yet, so the comparison grid always has a
+    value to render even before anyone's judged it."""
+
+    yes = "yes"
+    partial = "partial"
+    no = "no"
+    unknown = "unknown"
+
+
 class TravelType(str, enum.Enum):
     flight = "flight"
     train = "train"
@@ -23,12 +38,14 @@ class TravelType(str, enum.Enum):
 
 
 class Category(Base):
-    """A user-managed label (name + color) an activity can optionally
-    belong to - same shape as time-management's Category, except here
-    Activity.category_id is nullable: activities are often created quickly
-    (tap-to-create on the agenda, the trip-clipper extension) without
-    picking one, and that's a normal, expected state here, not just a
-    defensive fallback."""
+    """A user-managed label (name + color) an activity or place can
+    optionally belong to - zero, one, or several at once (see
+    ActivityCategory/PlaceCategory below) - same shape as time-management's
+    Category, except here it's optional and multi-valued: activities are
+    often created quickly (tap-to-create on the agenda, the trip-clipper
+    extension) without picking one, and a place can genuinely be more than
+    one thing at once (a cafe that's also a bookstore), so forcing a single
+    choice was the wrong constraint, not just a missing nice-to-have."""
 
     __tablename__ = "categories"
 
@@ -48,12 +65,13 @@ class Category(Base):
     # only ever has to touch the two swapped rows.
     sort_order = Column(Integer, nullable=False, default=0, server_default="0")
 
-    # back_populates targets Activity.own_category (not "category" - that
-    # name is a resolving @property on Activity now, see Activity's
-    # docstring, so the real FK-backed relationship it wraps had to move to
-    # a different attribute name).
-    activities = relationship("Activity", back_populates="own_category")
-    places = relationship("Place", back_populates="category")
+    # back_populates targets Activity.own_categories/Place.categories (not
+    # "activities"/"places" mirrored 1:1 - these are many-to-many now, see
+    # ActivityCategory/PlaceCategory below and Activity's own docstring on
+    # why the activity side is "own_categories" specifically, not
+    # "categories").
+    activities = relationship("Activity", secondary="activity_categories", back_populates="own_categories")
+    places = relationship("Place", secondary="place_categories", back_populates="categories")
 
 
 class TripActivity(Base):
@@ -73,6 +91,33 @@ class TripActivity(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class ActivityCategory(Base):
+    """Join table linking activities and categories - many-to-many, an
+    activity can carry zero or several category tags at once (see
+    Category's docstring). Links Activity's own_categories specifically -
+    a place-linked activity's *effective* categories come through its
+    place instead (Activity.category_ids), but the activity's own row here
+    stays untouched either way, same "dormant, not deleted" treatment as
+    its other own_* fields."""
+
+    __tablename__ = "activity_categories"
+
+    activity_id = Column(Integer, ForeignKey("activities.id"), primary_key=True)
+    category_id = Column(Integer, ForeignKey("categories.id"), primary_key=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class PlaceCategory(Base):
+    """Join table linking places and categories - many-to-many, same
+    reasoning as ActivityCategory."""
+
+    __tablename__ = "place_categories"
+
+    place_id = Column(Integer, ForeignKey("places.id"), primary_key=True)
+    category_id = Column(Integer, ForeignKey("categories.id"), primary_key=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class Trip(Base):
     __tablename__ = "trips"
 
@@ -87,6 +132,12 @@ class Trip(Base):
     start_date = Column(DateTime, nullable=True)
     end_date = Column(DateTime, nullable=True)
     archived = Column(Boolean, nullable=False, default=False)
+    # ISO 4217 code the trip's costs are reasoned about in - what a stay's
+    # imported foreign-currency price gets converted to (via the per-stay
+    # fx_rate) for an apples-to-apples comparison, and the unit the
+    # existing whole-dollar `cost` fields are already assumed to be in.
+    # Defaults to USD; only really matters to set for an international trip.
+    home_currency = Column(String, nullable=False, default="USD", server_default="USD")
 
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -108,6 +159,16 @@ class Trip(Base):
     # Same reasoning as stays/travel_segments.
     dog_care_bookings = relationship(
         "DogCareBooking", back_populates="trip", cascade="all, delete-orphan"
+    )
+    # The user-defined checklist this trip's candidate stays are scored
+    # against on compare.html - see TripStayCriterion. Trip-scoped (unlike
+    # the cross-trip Category list) because "walkable to the conference
+    # venue" or "sleeps 6" only means anything for one specific trip.
+    stay_criteria = relationship(
+        "TripStayCriterion",
+        back_populates="trip",
+        cascade="all, delete-orphan",
+        order_by="TripStayCriterion.sort_order",
     )
 
 
@@ -180,9 +241,16 @@ class Activity(Base):
     # an activity can't sensibly be both, but nothing enforces that at the
     # schema level - it's just never set that way in practice.
     archived = Column(Boolean, nullable=False, default=False)
-    own_category_id = Column("category_id", Integer, ForeignKey("categories.id"), nullable=True)
 
     place_id = Column(Integer, ForeignKey("places.id"), nullable=True)
+
+    # The social-planning (plans.evancooperman.com) Plan this activity was
+    # created from, if any - see routers/plan_links.py. A plain integer, not
+    # a ForeignKey: the plan lives in a different app's database. Set once
+    # at creation (the plan's name/description/url are copied over, not
+    # delegated live like place_id) and never edited, so the plans app can
+    # ask "where did plan 42 end up?" via GET /api/plan-links.
+    plan_id = Column(Integer, nullable=True, index=True)
 
     # Both optional - null means "not yet scheduled," which is what puts it
     # in the agenda page's unscheduled sidebar rather than a day column.
@@ -209,7 +277,12 @@ class Activity(Base):
     trips = relationship(
         "Trip", secondary="trip_activities", back_populates="activities"
     )
-    own_category = relationship("Category", back_populates="activities", foreign_keys=[own_category_id])
+    # This activity's own category tags - always independent of any linked
+    # place's, same "own_* is dormant, not deleted, once place-linked"
+    # treatment as every other own_* field (see the class docstring and
+    # the category_ids property below, which is what actually resolves
+    # which set is "effective").
+    own_categories = relationship("Category", secondary="activity_categories", back_populates="activities")
     place = relationship("Place", back_populates="activities")
 
     # --- delegating properties - see the class docstring -------------------
@@ -271,12 +344,15 @@ class Activity(Base):
         self.own_map_link = value
 
     @property
-    def category_id(self):
-        return self.place.category_id if self.place_id else self.own_category_id
-
-    @category_id.setter
-    def category_id(self, value):
-        self.own_category_id = value
+    def category_ids(self):
+        # Read-only, unlike the scalar properties above - setting a
+        # many-to-many relationship from a list of ids needs a DB session
+        # to look up the actual Category rows, which a plain property
+        # setter has no clean access to. Writes go through
+        # crud._set_activity_categories instead.
+        if self.place_id:
+            return [c.id for c in self.place.categories] if self.place else []
+        return [c.id for c in self.own_categories]
 
 
 class LocationDistance(Base):
@@ -345,7 +421,6 @@ class Place(Base):
     city = Column(String, nullable=True)
     phone_number = Column(String, nullable=True)
     map_link = Column(String, nullable=True)
-    category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
 
     rating = Column(Integer, nullable=True)
     review = Column(Text, nullable=True)
@@ -360,9 +435,19 @@ class Place(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    category = relationship("Category", back_populates="places")
+    categories = relationship("Category", secondary="place_categories", back_populates="places")
     activities = relationship("Activity", back_populates="place")
     images = relationship("PlaceImage", back_populates="place", cascade="all, delete-orphan")
+
+    @property
+    def category_ids(self):
+        # schemas.Place reads this (Pydantic's from_attributes getattr's
+        # field names off the ORM object) - `categories` itself holds the
+        # actual Category objects, not their ids, and writes go through
+        # crud._resolve_categories the same way Activity's do (see that
+        # class's category_ids docstring on why a plain property setter
+        # can't do this on its own).
+        return [c.id for c in self.categories]
 
 
 class PlaceImage(Base):
@@ -406,13 +491,39 @@ class Stay(Base):
     description = Column(Text, nullable=True)
     url = Column(String, nullable=True)
     address = Column(String, nullable=True)
-    # Whole dollars, same as Activity.cost. Feeds the finances app's trip
-    # cost forecast (booked stays are counted; see GET /api/trips/cost-summary).
+    # Whole dollars in the trip's home_currency, same as Activity.cost.
+    # Feeds the finances app's trip cost forecast (booked stays are
+    # counted; see GET /api/trips/cost-summary). The price-worksheet
+    # fields below are the scratch input that *produces* this number for a
+    # candidate stay - "Use as cost" on compare.html copies the computed
+    # estimated_total here; nothing writes it automatically.
     cost = Column(Integer, nullable=True)
     start_date = Column(DateTime, nullable=False)
     end_date = Column(DateTime, nullable=False)
     booked = Column(Boolean, nullable=False, default=False)
     archived = Column(Boolean, nullable=False, default=False)
+
+    # --- price worksheet, mostly filled by the URL/screenshot importer
+    # (see app/stay_extraction.py) and then eyeballed/corrected by hand.
+    # Amounts are in listing_currency (None = the trip's home_currency).
+    # A listing usually gives EITHER a per-night rate OR an all-in total
+    # for the dates, not both - estimated_total below copes with either.
+    listing_currency = Column(String, nullable=True)  # ISO 4217, e.g. "EUR"
+    nightly_price = Column(Float, nullable=True)
+    total_price = Column(Float, nullable=True)
+    extra_fees = Column(Float, nullable=True)  # cleaning + service + taxes, lumped
+    # Home-currency units per 1 listing-currency unit (manual - no live FX
+    # feed by design). None is treated as 1.0, correct whenever
+    # listing_currency is None/blank or already the home currency.
+    fx_rate = Column(Float, nullable=True)
+    bedrooms = Column(Integer, nullable=True)
+    bathrooms = Column(Float, nullable=True)  # half-baths are real
+    sleeps = Column(Integer, nullable=True)
+    # Set by the bulk importer, cleared the first time the stay is saved
+    # from its edit pane - "these numbers came from an AI read of the page
+    # and nobody's checked them yet," surfaced as a badge on the card and
+    # the compare grid.
+    needs_review = Column(Boolean, nullable=False, default=False, server_default="0")
 
     scrape_status = Column(Enum(ScrapeStatus), nullable=False, default=ScrapeStatus.not_started)
     scraped_title = Column(String, nullable=True)
@@ -425,6 +536,76 @@ class Stay(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     trip = relationship("Trip", back_populates="stays")
+    criterion_verdicts = relationship(
+        "StayCriterionVerdict", back_populates="stay", cascade="all, delete-orphan"
+    )
+
+    @property
+    def nights(self) -> int:
+        if not self.start_date or not self.end_date:
+            return 0
+        return max((self.end_date - self.start_date).days, 0)
+
+    @property
+    def estimated_total(self):
+        """Best-guess all-in cost in the trip's home currency, from the
+        price worksheet - None until there's enough to compute one.
+        total_price wins over nightly_price*nights when both are set."""
+        base = self.total_price
+        if base is None and self.nightly_price is not None:
+            base = self.nightly_price * self.nights
+        if base is None:
+            return None
+        return round((base + (self.extra_fees or 0)) * (self.fx_rate or 1.0))
+
+
+class TripStayCriterion(Base):
+    """One row of a trip's "what matters for lodging on this trip"
+    checklist - the columns of the comparison grid on compare.html. Each
+    candidate stay gets a per-criterion verdict (see StayCriterionVerdict).
+
+    weight scales how much a met criterion contributes to a stay's score;
+    must_have flips it from "nice to have" to "disqualifying if not met" -
+    a stay that fails any must_have is flagged regardless of its score.
+    sort_order is the same append-with-gaps (max+10) pattern as Category,
+    so reordering only touches the two swapped rows.
+    """
+
+    __tablename__ = "trip_stay_criteria"
+
+    id = Column(Integer, primary_key=True)
+    trip_id = Column(Integer, ForeignKey("trips.id"), nullable=False)
+    label = Column(String, nullable=False)
+    weight = Column(Integer, nullable=False, default=1, server_default="1")
+    must_have = Column(Boolean, nullable=False, default=False, server_default="0")
+    sort_order = Column(Integer, nullable=False, default=0, server_default="0")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    trip = relationship("Trip", back_populates="stay_criteria")
+    verdicts = relationship(
+        "StayCriterionVerdict", back_populates="criterion", cascade="all, delete-orphan"
+    )
+
+
+class StayCriterionVerdict(Base):
+    """How one candidate stay measures up against one of its trip's
+    criteria - yes / partial / no / unknown (see models.CriterionVerdict).
+    Composite-keyed on (stay_id, criterion_id), same shape as the
+    TripActivity / ActivityCategory join classes. A missing row means
+    "unknown" - the grid never requires every cell to be filled in.
+    """
+
+    __tablename__ = "stay_criterion_verdicts"
+
+    stay_id = Column(Integer, ForeignKey("stays.id"), primary_key=True)
+    criterion_id = Column(Integer, ForeignKey("trip_stay_criteria.id"), primary_key=True)
+    verdict = Column(String, nullable=False, default="unknown", server_default="unknown")
+    note = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    stay = relationship("Stay", back_populates="criterion_verdicts")
+    criterion = relationship("TripStayCriterion", back_populates="verdicts")
 
 
 class TravelSegment(Base):

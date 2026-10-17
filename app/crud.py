@@ -58,15 +58,16 @@ def delete_category(db: Session, category_id: int) -> str:
     """Returns 'deleted', 'not_found', or 'in_use' (refuses to delete a
     category still assigned to any activity or place - the router turns
     'in_use' into a 409, matching time-management's own Category delete).
-    Checks Activity.own_category_id specifically (not the resolving
-    category_id property, which isn't a real column) - a place-linked
-    activity's effective category is checked via its place instead."""
+    Checks Activity.own_categories specifically (via the actual join
+    table, not the resolving category_ids property, which isn't backed by
+    a plain column) - a place-linked activity's effective categories are
+    checked via its place instead."""
     db_category = get_category(db, category_id)
     if db_category is None:
         return "not_found"
     in_use = (
-        db.query(models.Activity).filter(models.Activity.own_category_id == category_id).count()
-        + db.query(models.Place).filter(models.Place.category_id == category_id).count()
+        db.query(models.Activity).filter(models.Activity.own_categories.any(models.Category.id == category_id)).count()
+        + db.query(models.Place).filter(models.Place.categories.any(models.Category.id == category_id)).count()
     )
     if in_use > 0:
         return "in_use"
@@ -304,9 +305,20 @@ def get_activity(db: Session, activity_id: int):
     return db.query(models.Activity).filter(models.Activity.id == activity_id).first()
 
 
+def _resolve_categories(db: Session, category_ids):
+    """[id, ...] -> [Category, ...] - the actual ORM objects a many-to-many
+    relationship needs, since a plain @property setter (like the scalar
+    own_* fields use) has no clean way to query the DB for them. Shared by
+    activities and places."""
+    if not category_ids:
+        return []
+    return db.query(models.Category).filter(models.Category.id.in_(category_ids)).all()
+
+
 def create_activity(db: Session, activity: schemas.ActivityCreate):
-    data = activity.model_dump(exclude={"trip_id"})
+    data = activity.model_dump(exclude={"trip_id", "category_ids"})
     db_activity = models.Activity(**data)
+    db_activity.own_categories = _resolve_categories(db, activity.category_ids)
     db.add(db_activity)
     db.commit()
     db.refresh(db_activity)
@@ -332,6 +344,9 @@ def update_activity(db: Session, activity_id: int, updates: schemas.ActivityUpda
     if db_activity is None:
         return None
     update_data = updates.model_dump(exclude_unset=True)
+    # Not a plain column - see _resolve_categories - so it can't go through
+    # the generic setattr loop below like every other field here does.
+    category_ids = update_data.pop("category_ids", None)
     # Linking to a place (via a plain PATCH, not crud.promote_activity_to_
     # place - that path clears these itself before this is ever called)
     # makes this activity's own venue fields dormant (see models.Activity's
@@ -345,9 +360,11 @@ def update_activity(db: Session, activity_id: int, updates: schemas.ActivityUpda
         db_activity.own_city = None
         db_activity.own_phone_number = None
         db_activity.own_map_link = None
-        db_activity.own_category_id = None
+        db_activity.own_categories = []
     for field, value in update_data.items():
         setattr(db_activity, field, value)
+    if category_ids is not None:
+        db_activity.own_categories = _resolve_categories(db, category_ids)
     # Address/city change distance directly; place_id changes it
     # indirectly (a newly linked - or unlinked - place has its own address/
     # city). A renamed activity or a new cost doesn't affect distance at
@@ -389,7 +406,8 @@ def get_place(db: Session, place_id: int):
 
 
 def create_place(db: Session, place: schemas.PlaceCreate):
-    db_place = models.Place(**place.model_dump())
+    db_place = models.Place(**place.model_dump(exclude={"category_ids"}))
+    db_place.categories = _resolve_categories(db, place.category_ids)
     db.add(db_place)
     db.commit()
     db.refresh(db_place)
@@ -401,8 +419,11 @@ def update_place(db: Session, place_id: int, updates: schemas.PlaceUpdate):
     if db_place is None:
         return None
     update_data = updates.model_dump(exclude_unset=True)
+    category_ids = update_data.pop("category_ids", None)
     for field, value in update_data.items():
         setattr(db_place, field, value)
+    if category_ids is not None:
+        db_place.categories = _resolve_categories(db, category_ids)
     if "address" in update_data or "city" in update_data:
         # Every activity delegating to this place just had its effective
         # address/city change too (see models.Activity's address/city
@@ -457,11 +478,11 @@ def save_place_scrape_result(
 
 def promote_activity_to_place(db: Session, activity_id: int):
     """Creates a new Place from this activity's own current name/
-    description/url/address/city/phone_number/map_link/category_id,
-    links the activity to it, and clears those columns on the activity
-    (see models.Activity's docstring - from this point on they resolve
-    through the place instead). Returns the updated activity, or None if
-    it doesn't exist, is already place-linked, or has no name (nothing to
+    description/url/address/city/phone_number/map_link/categories, links
+    the activity to it, and clears those columns on the activity (see
+    models.Activity's docstring - from this point on they resolve through
+    the place instead). Returns the updated activity, or None if it
+    doesn't exist, is already place-linked, or has no name (nothing to
     promote - see schemas.ActivityCreate's own name-or-place_id rule)."""
     db_activity = get_activity(db, activity_id)
     if db_activity is None or db_activity.place_id is not None or not db_activity.own_name:
@@ -475,7 +496,7 @@ def promote_activity_to_place(db: Session, activity_id: int):
         city=db_activity.own_city,
         phone_number=db_activity.own_phone_number,
         map_link=db_activity.own_map_link,
-        category_id=db_activity.own_category_id,
+        categories=list(db_activity.own_categories),
     )
     db.add(db_place)
     db.flush()  # assigns db_place.id without a full commit yet
@@ -488,7 +509,7 @@ def promote_activity_to_place(db: Session, activity_id: int):
     db_activity.own_city = None
     db_activity.own_phone_number = None
     db_activity.own_map_link = None
-    db_activity.own_category_id = None
+    db_activity.own_categories = []
 
     # Same reasoning as update_activity's place_id branch - the activity's
     # effective address just changed (from its own to the new place's,
@@ -773,6 +794,259 @@ def save_stay_scrape_result(
 
 
 # ---------------------------------------------------------------------------
+# Candidate-stay bulk import + the comparison grid (compare.html)
+# ---------------------------------------------------------------------------
+
+# Worksheet/detail fields the AI importer and the screenshot re-extract are
+# allowed to write onto a Stay - deliberately not name/url/dates (those are
+# set once at create time or by the user), just the stuff worth having a
+# model take a first pass at.
+_STAY_EXTRACT_FIELDS = (
+    "description", "address", "listing_currency", "nightly_price",
+    "total_price", "extra_fees", "bedrooms", "bathrooms", "sleeps",
+)
+
+
+def _apply_extracted_fields(db_stay: "models.Stay", fields: Optional[dict]) -> bool:
+    """Writes whichever of _STAY_EXTRACT_FIELDS `fields` actually has a
+    value for onto db_stay - shared by create_imported_stay,
+    apply_stay_extraction, and update_imported_stay, so "only overwrite
+    what the model actually found" is one rule, not three copies of it.
+    Returns True if anything was written."""
+    touched = False
+    for key in _STAY_EXTRACT_FIELDS:
+        value = (fields or {}).get(key)
+        if value is not None:
+            setattr(db_stay, key, value)
+            touched = True
+    return touched
+
+
+def create_imported_stay(
+    db: Session,
+    trip_id: int,
+    *,
+    name: str,
+    url: Optional[str],
+    start_date: datetime,
+    end_date: datetime,
+    fields: Optional[dict] = None,
+    needs_review: bool = True,
+    scrape_status: models.ScrapeStatus = models.ScrapeStatus.not_started,
+    scraped_title: Optional[str] = None,
+    scraped_description: Optional[str] = None,
+    scraped_image_url: Optional[str] = None,
+    scrape_error: Optional[str] = None,
+):
+    """One candidate stay from the bulk URL importer. `fields` is the
+    subset of _STAY_EXTRACT_FIELDS the AI managed to pull; everything else
+    is left blank for the user to fill in on the trip page."""
+    if get_trip(db, trip_id) is None:
+        return None
+    db_stay = models.Stay(
+        trip_id=trip_id,
+        name=name,
+        url=url or None,
+        start_date=start_date,
+        end_date=end_date,
+        needs_review=needs_review,
+        scrape_status=scrape_status,
+        scraped_title=scraped_title,
+        scraped_description=scraped_description,
+        scraped_image_url=scraped_image_url,
+        scrape_error=scrape_error,
+        scraped_at=datetime.utcnow() if scrape_status != models.ScrapeStatus.not_started else None,
+    )
+    _apply_extracted_fields(db_stay, fields)
+    db.add(db_stay)
+    db.commit()
+    db.refresh(db_stay)
+    return db_stay
+
+
+def find_stay_by_url(db: Session, trip_id: int, url: Optional[str]):
+    """The trip's existing candidate stay for this exact URL, if any -
+    scoped to the trip (the same listing could legitimately be a candidate
+    on two different trips). Used by the bulk importer to refresh a
+    previously-imported stay in place instead of creating a duplicate on
+    re-import - see routers/stay_compare.py."""
+    if not url:
+        return None
+    return (
+        db.query(models.Stay)
+        .filter(models.Stay.trip_id == trip_id, models.Stay.url == url)
+        .first()
+    )
+
+
+# A name the importer made up itself ("Stay from airbnb.com") because
+# nothing better was found at the time - update_imported_stay only
+# overwrites the name when it still looks like this, so a name you've
+# since typed in by hand is never silently replaced.
+_PLACEHOLDER_NAME_PREFIX = "Stay from "
+
+
+def update_imported_stay(
+    db: Session,
+    stay_id: int,
+    *,
+    name: Optional[str] = None,
+    fields: Optional[dict] = None,
+    scrape_status: Optional[models.ScrapeStatus] = None,
+    scraped_title: Optional[str] = None,
+    scraped_description: Optional[str] = None,
+    scraped_image_url: Optional[str] = None,
+    scrape_error: Optional[str] = None,
+):
+    """Refreshes an already-imported stay with a fresh read, in place -
+    what re-running the bulk URL importer does for a URL it's seen before
+    on this trip (see find_stay_by_url), rather than creating a second
+    candidate for the same listing. Only touches worksheet fields the new
+    read actually found a value for, and the name only when it's still the
+    importer's own placeholder - your dates, cost, booked/archived state,
+    and anything you've typed by hand are left alone."""
+    db_stay = get_stay(db, stay_id)
+    if db_stay is None:
+        return None
+    touched = _apply_extracted_fields(db_stay, fields)
+    if name and (not db_stay.name or db_stay.name.startswith(_PLACEHOLDER_NAME_PREFIX)):
+        db_stay.name = name
+        touched = True
+    if scrape_status is not None:
+        db_stay.scrape_status = scrape_status
+        db_stay.scraped_title = scraped_title
+        db_stay.scraped_description = scraped_description
+        db_stay.scraped_image_url = scraped_image_url
+        db_stay.scrape_error = scrape_error
+        db_stay.scraped_at = datetime.utcnow()
+    if touched:
+        db_stay.needs_review = True
+    db.commit()
+    db.refresh(db_stay)
+    return db_stay
+
+
+def apply_stay_extraction(db: Session, stay_id: int, fields: dict):
+    """Patch an existing stay with a fresh AI read (the screenshot
+    re-extract) - only overwrites a field when the model actually returned
+    a value, so a partial read never blanks out something already there.
+    Re-flags the stay for review."""
+    db_stay = get_stay(db, stay_id)
+    if db_stay is None:
+        return None
+    if _apply_extracted_fields(db_stay, fields):
+        db_stay.needs_review = True
+    db.commit()
+    db.refresh(db_stay)
+    return db_stay
+
+
+def get_stay_criteria(db: Session, trip_id: int):
+    return (
+        db.query(models.TripStayCriterion)
+        .filter(models.TripStayCriterion.trip_id == trip_id)
+        .order_by(models.TripStayCriterion.sort_order, models.TripStayCriterion.id)
+        .all()
+    )
+
+
+def get_stay_criterion(db: Session, criterion_id: int):
+    return (
+        db.query(models.TripStayCriterion)
+        .filter(models.TripStayCriterion.id == criterion_id)
+        .first()
+    )
+
+
+def create_stay_criterion(db: Session, trip_id: int, data: schemas.StayCriterionCreate):
+    if get_trip(db, trip_id) is None:
+        return None
+    max_order = (
+        db.query(func.max(models.TripStayCriterion.sort_order))
+        .filter(models.TripStayCriterion.trip_id == trip_id)
+        .scalar()
+        or 0
+    )
+    db_criterion = models.TripStayCriterion(
+        trip_id=trip_id, sort_order=max_order + 10, **data.model_dump()
+    )
+    db.add(db_criterion)
+    db.commit()
+    db.refresh(db_criterion)
+    return db_criterion
+
+
+def update_stay_criterion(db: Session, criterion_id: int, updates: schemas.StayCriterionUpdate):
+    db_criterion = get_stay_criterion(db, criterion_id)
+    if db_criterion is None:
+        return None
+    for field, value in updates.model_dump(exclude_unset=True).items():
+        setattr(db_criterion, field, value)
+    db.commit()
+    db.refresh(db_criterion)
+    return db_criterion
+
+
+def delete_stay_criterion(db: Session, criterion_id: int) -> bool:
+    db_criterion = get_stay_criterion(db, criterion_id)
+    if db_criterion is None:
+        return False
+    db.delete(db_criterion)  # cascade drops its verdict rows
+    db.commit()
+    return True
+
+
+def set_criterion_verdict(
+    db: Session, stay_id: int, criterion_id: int, verdict: str, note: Optional[str]
+):
+    """Upsert one (stay, criterion) cell of the grid. Returns None if
+    either side doesn't exist or they belong to different trips."""
+    db_stay = get_stay(db, stay_id)
+    db_criterion = get_stay_criterion(db, criterion_id)
+    if db_stay is None or db_criterion is None or db_stay.trip_id != db_criterion.trip_id:
+        return None
+    row = (
+        db.query(models.StayCriterionVerdict)
+        .filter(
+            models.StayCriterionVerdict.stay_id == stay_id,
+            models.StayCriterionVerdict.criterion_id == criterion_id,
+        )
+        .first()
+    )
+    if row is None:
+        row = models.StayCriterionVerdict(stay_id=stay_id, criterion_id=criterion_id)
+        db.add(row)
+    row.verdict = verdict
+    row.note = note or None
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def get_stay_comparison(db: Session, trip_id: int):
+    trip = get_trip(db, trip_id)
+    if trip is None:
+        return None
+    criteria = get_stay_criteria(db, trip_id)
+    stays = get_stays(db, trip_id)
+    verdicts = (
+        db.query(models.StayCriterionVerdict)
+        .join(
+            models.TripStayCriterion,
+            models.TripStayCriterion.id == models.StayCriterionVerdict.criterion_id,
+        )
+        .filter(models.TripStayCriterion.trip_id == trip_id)
+        .all()
+    )
+    return {
+        "home_currency": trip.home_currency or "USD",
+        "criteria": criteria,
+        "stays": stays,
+        "verdicts": verdicts,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Travel segments (flights, trains, rental cars, ferries - see models.TravelSegment)
 # ---------------------------------------------------------------------------
 
@@ -929,3 +1203,49 @@ def get_trip_dog_care_coverage(db: Session, trip_id: int) -> Optional[dict]:
         "covered": len(missing_days) == 0,
         "missing_dates": [d.isoformat() for d in missing_days],
     }
+
+
+# --- plan links (see routers/plan_links.py) -----------------------------------
+
+
+def get_plan_linked_activities(db: Session, plan_id: Optional[int] = None):
+    query = db.query(models.Activity).filter(models.Activity.plan_id.isnot(None))
+    if plan_id is not None:
+        query = query.filter(models.Activity.plan_id == plan_id)
+    return query.order_by(models.Activity.created_at).all()
+
+
+def find_plan_activity(db: Session, plan_id: int, trip_id: Optional[int]):
+    """The activity already created from this plan in the same place the
+    import would put it - on this trip, or unassociated when trip_id is
+    None - so re-importing a plan is a no-op rather than a duplicate."""
+    for activity in get_plan_linked_activities(db, plan_id):
+        trip_ids = [t.id for t in activity.trips]
+        if (trip_id is None and not trip_ids) or trip_id in trip_ids:
+            return activity
+    return None
+
+
+def create_activity_from_plan(db: Session, plan: dict, trip_id: Optional[int]):
+    """Copies a plan's details into a new activity (see models.Activity.
+    plan_id on why it's a copy, not a live delegation), including its
+    scraped preview so the card isn't blank until someone re-fetches."""
+    db_activity = create_activity(
+        db,
+        schemas.ActivityCreate(
+            name=plan["name"],
+            description=plan.get("description"),
+            url=plan.get("url"),
+            plan_id=plan["id"],
+            trip_id=trip_id,
+        ),
+    )
+    if plan.get("scrape_status") == models.ScrapeStatus.success.value:
+        db_activity.scrape_status = models.ScrapeStatus.success
+        db_activity.scraped_title = plan.get("scraped_title")
+        db_activity.scraped_description = plan.get("scraped_description")
+        db_activity.scraped_image_url = plan.get("scraped_image_url")
+        db_activity.scraped_at = datetime.utcnow()
+        db.commit()
+        db.refresh(db_activity)
+    return db_activity

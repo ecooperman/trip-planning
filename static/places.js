@@ -18,26 +18,13 @@ if (pageParams.get("id")) {
   window.history.replaceState({}, "", url);
 }
 
-// --- category select (read-only picker, not the manager - that lives on
-// activities.html, same split Activity's own form already uses) ----------
-
-function categorySelectElement(selectedId) {
-  const select = Global.el("select", {}, [
-    Global.el("option", { value: "", text: "No category" }),
-    ...categories.map((c) => Global.el("option", { value: String(c.id), text: c.name })),
-  ]);
-  select.value = selectedId ? String(selectedId) : "";
-  return select;
-}
-
-function categoryBadge(categoryId) {
-  const category = categoriesById[categoryId];
-  if (!category) return null;
-  const badge = Global.el("span", { class: "item-badge", text: category.name });
-  badge.style.setProperty("--cat-color", category.color);
-  badge.classList.add(category.text_color === "light" ? "cat-text-light" : "cat-text-dark");
-  return badge;
-}
+// Category assignment (a multiselect - buildCategoryMultiSelect, common.js
+// - not the manager, which lives on activities.html, same split Activity's
+// own form already uses) and its card-summary badges
+// (soleCategoryFor/categoryBadgeElements, common.js - whole-card tint for
+// exactly one category, small per-category badges for zero or several,
+// same rule activity-shared.js's cards use) live in common.js now, shared
+// rather than reimplemented here.
 
 // --- photo gallery (plain binary storage, no processing at all - see
 // models.PlaceImage) -------------------------------------------------------
@@ -105,14 +92,27 @@ function placePhotoGallery(place, onChanged) {
 // --- card (view/edit, same pattern as Stay/TravelSegment/DogCareBooking) --
 
 function placeCardElement(place, { expanded = false } = {}) {
-  const card = Global.el("div", { class: "item-card" + (expanded ? " expanded" : ""), "data-id": place.id });
+  // Same rule as an activity card (activity-shared.js) - whole-card tint
+  // only for exactly one category, small per-category badges otherwise.
+  const soleCategory = soleCategoryFor(place.category_ids);
+  const card = Global.el("div", {
+    class: "item-card" + (expanded ? " expanded" : "") + (soleCategory ? " has-category" : ""),
+    "data-id": place.id,
+  });
+  if (soleCategory) {
+    card.style.setProperty("--cat-color", soleCategory.color);
+    card.style.setProperty("--cat-text-color", soleCategory.text_color === "light" ? "#ffffff" : "#000000");
+  }
 
   const summary = Global.el("button", { type: "button", class: "item-summary", "aria-expanded": String(expanded) });
   summary.appendChild(Global.el("span", { class: "item-summary-title", text: place.name }));
   const ratingLabel = starsDisplay(place.rating);
   if (ratingLabel) summary.appendChild(Global.el("span", { class: "item-badge-rating", text: ratingLabel }));
-  const catBadge = categoryBadge(place.category_id);
-  if (catBadge) summary.appendChild(catBadge);
+  if (soleCategory) {
+    summary.appendChild(Global.el("span", { class: "item-summary-category-label", text: soleCategory.name }));
+  } else {
+    for (const badge of categoryBadgeElements(place.category_ids)) summary.appendChild(badge);
+  }
   if (place.city) summary.appendChild(Global.el("span", { class: "item-badge item-badge-date", text: place.city }));
 
   summary.appendChild(Global.el("span", { class: "item-chevron", "aria-hidden": "true", text: "▸" }));
@@ -244,7 +244,7 @@ function buildPlaceEditPane(card, place) {
   const cityInput = cityInputElement(place.city);
   const phoneInput = Global.el("input", { type: "text", value: place.phone_number || "" });
   const mapLinkInput = Global.el("input", { type: "url", value: place.map_link || "" });
-  const categorySelect = categorySelectElement(place.category_id);
+  const categoryPicker = buildCategoryMultiSelect(place.category_ids);
   const ratingInput = ratingInputElement(place.rating);
   const reviewInput = Global.el("textarea", { rows: "3", placeholder: "What made this place worth remembering?" });
   reviewInput.value = place.review || "";
@@ -260,7 +260,7 @@ function buildPlaceEditPane(card, place) {
         Global.el("div", { class: "field" }, [Global.el("label", { text: "Phone" }), phoneInput]),
       ]),
       Global.el("div", { class: "field" }, [Global.el("label", { text: "Map link" }), mapLinkInput]),
-      Global.el("div", { class: "field" }, [Global.el("label", { text: "Category" }), categorySelect]),
+      Global.el("div", { class: "field" }, [Global.el("label", { text: "Categories" }), categoryPicker.element]),
       Global.el("div", { class: "field" }, [Global.el("label", { text: "Rating" }), ratingInput]),
       Global.el("div", { class: "field" }, [Global.el("label", { text: "Review" }), reviewInput]),
     ])
@@ -297,7 +297,7 @@ function buildPlaceEditPane(card, place) {
             city: cityInput.value.trim() || null,
             phone_number: phoneInput.value.trim() || null,
             map_link: mapLinkInput.value.trim() || null,
-            category_id: categorySelect.value ? Number(categorySelect.value) : null,
+            category_ids: categoryPicker.getSelectedIds(),
             rating: ratingInput.value,
             review: reviewInput.value.trim() || null,
           }),
@@ -329,7 +329,7 @@ function renderPlaceList() {
   const filtered = loadedPlaces.filter(
     (p) =>
       (cityFilter.size === 0 || (p.city && cityFilter.has(p.city))) &&
-      (categoryFilter.size === 0 || (p.category_id && categoryFilter.has(String(p.category_id)))) &&
+      (categoryFilter.size === 0 || p.category_ids.some((id) => categoryFilter.has(String(id)))) &&
       (ratingFilter.size === 0 || (p.rating && ratingFilter.has(String(p.rating))))
   );
   let deepLinkCard = null;
@@ -416,7 +416,7 @@ function initAddPlaceForm() {
   const urlInput = Global.el("input", { type: "url", placeholder: "https://..." });
   const addressInput = Global.el("input", { type: "text", placeholder: "Optional" });
   const cityInput = cityInputElement("");
-  const categorySelect = categorySelectElement(null);
+  const categoryPicker = buildCategoryMultiSelect(null);
   const ratingInput = ratingInputElement(null);
   const reviewInput = Global.el("textarea", { rows: "3", placeholder: "Optional" });
 
@@ -426,11 +426,25 @@ function initAddPlaceForm() {
     Global.el("div", { class: "field" }, [Global.el("label", { text: "URL" }), urlInput]),
     Global.el("div", { class: "field" }, [Global.el("label", { text: "Address" }), addressInput]),
     Global.el("div", { class: "field" }, [Global.el("label", { text: "City" }), cityInput]),
-    Global.el("div", { class: "field" }, [Global.el("label", { text: "Category" }), categorySelect]),
+    Global.el("div", { class: "field" }, [Global.el("label", { text: "Categories" }), categoryPicker.element]),
     Global.el("div", { class: "field" }, [Global.el("label", { text: "Rating" }), ratingInput]),
     Global.el("div", { class: "field" }, [Global.el("label", { text: "Review" }), reviewInput]),
     Global.el("div", { class: "item-actions" }),
   ]);
+
+  // form.reset() (both the Cancel button below and a successful submit)
+  // only touches real form controls - neither ratingInputElement nor
+  // buildCategoryMultiSelect (common.js) are native inputs, so each tracks
+  // its own value/selection independently of whatever a native reset does
+  // to the DOM. Hooking the form's own "reset" event once, rather than
+  // repeating "reset it by hand" at both the Cancel and submit call sites,
+  // covers both automatically. Reusing the multiselect's own "Clear"
+  // button click - not reimplementing that logic here - keeps it in sync
+  // with whatever buildMultiSelect's Clear actually does.
+  form.addEventListener("reset", () => {
+    ratingInput.value = null;
+    categoryPicker.element.querySelector(".multiselect-clear")?.click();
+  });
 
   const cancelBtn = Global.el("button", {
     type: "button",
@@ -438,7 +452,6 @@ function initAddPlaceForm() {
     text: "Cancel",
     onclick: () => {
       form.reset();
-      ratingInput.value = null;
       form.classList.add("hidden");
       showBtn.classList.remove("hidden");
     },
@@ -466,13 +479,12 @@ function initAddPlaceForm() {
           url: urlInput.value.trim() || null,
           address: addressInput.value.trim() || null,
           city: cityInput.value.trim() || null,
-          category_id: categorySelect.value ? Number(categorySelect.value) : null,
+          category_ids: categoryPicker.getSelectedIds(),
           rating: ratingInput.value,
           review: reviewInput.value.trim() || null,
         }),
       });
       form.reset();
-      ratingInput.value = null;
       form.classList.add("hidden");
       showBtn.classList.remove("hidden");
       Global.showMessage(`Added "${name}".`, "success");
