@@ -5,6 +5,11 @@ After=network.target
 [Service]
 User=deploy
 WorkingDirectory=/opt/apps/trip-planning
+# Secrets shared by every app (ANTHROPIC_API_KEY, GOOGLE_MAPS_API_KEY, ...)
+# live in one root-only file on the droplet, never in this repo - see
+# DEPLOYMENT.md's "Shared secrets" step. The leading "-" means a missing
+# file isn't an error, so an app that doesn't use any of them still starts.
+EnvironmentFile=-/etc/personal-apps/shared.env
 ExecStart=/opt/apps/trip-planning/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8060
 Restart=on-failure
 RestartSec=3

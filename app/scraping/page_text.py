@@ -41,7 +41,8 @@ THIN_TEXT_THRESHOLD = 600
 # Optional - a Jina Reader (r.jina.ai) key. When set, listings that come
 # back thin from a direct fetch are retried through the proxy, which runs
 # the page's JavaScript first. Same never-committed, shell-set-locally /
-# systemd-set-on-the-droplet pattern as ANTHROPIC_API_KEY / GOOGLE_MAPS_API_KEY.
+# shared-secrets-file-on-the-droplet pattern as ANTHROPIC_API_KEY /
+# GOOGLE_MAPS_API_KEY (see app/config.py).
 JINA_API_KEY = os.environ.get("JINA_API_KEY")
 
 # JSON-LD keys worth surfacing to the model, flattened to "key: value"
