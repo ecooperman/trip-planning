@@ -840,11 +840,14 @@ async function loadAgenda({ preserveScroll = false } = {}) {
   // that changes the page's total height can still shift where you land
   // vertically, so that gets put back too.
   const scrollYBefore = window.scrollY;
-  [trip, activities, stays] = await Promise.all([
+  const fetchAll = Promise.all([
     Global.fetchJSON(`${TRIPS_API}/${tripId}`),
     Global.fetchJSON(`${TRIPS_API}/${tripId}/activities`),
     Global.fetchJSON(`${TRIPS_API}/${tripId}/stays`),
   ]);
+  // Spinner on the first load only - a refresh after a drag/drop already has
+  // the board on screen and shouldn't dim it.
+  [trip, activities, stays] = await (preserveScroll ? fetchAll : Global.withLoading(document.getElementById("agenda-days"), fetchAll));
   document.getElementById("page-title").textContent = `${trip.location} — Agenda`;
   document.getElementById("back-link").href = `trip.html?id=${tripId}`;
   document.getElementById("export-link").href = `${TRIPS_API}/${tripId}/export.xlsx`;

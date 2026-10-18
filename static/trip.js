@@ -565,7 +565,7 @@ async function loadStays() {
   const archivedList = document.getElementById("archived-stays-list");
   activeList.innerHTML = "";
   archivedList.innerHTML = "";
-  tripStays = await Global.fetchJSON(`${TRIPS_API}/${tripId}/stays`);
+  tripStays = await Global.withLoading(activeList, Global.fetchJSON(`${TRIPS_API}/${tripId}/stays`));
   for (const stay of tripStays) {
     (stay.archived ? archivedList : activeList).appendChild(stayCardElement(stay));
   }
@@ -969,7 +969,7 @@ async function loadTravelSegments() {
   const archivedList = document.getElementById("archived-travel-list");
   activeList.innerHTML = "";
   archivedList.innerHTML = "";
-  tripTravelSegments = await Global.fetchJSON(`${TRIPS_API}/${tripId}/travel`);
+  tripTravelSegments = await Global.withLoading(activeList, Global.fetchJSON(`${TRIPS_API}/${tripId}/travel`));
   for (const segment of tripTravelSegments) {
     (segment.archived ? archivedList : activeList).appendChild(travelSegmentCardElement(segment));
   }
@@ -1359,7 +1359,7 @@ async function loadDogCareBookings() {
   const archivedList = document.getElementById("archived-dog-care-list");
   activeList.innerHTML = "";
   archivedList.innerHTML = "";
-  const bookings = await Global.fetchJSON(`${TRIPS_API}/${tripId}/dog-care`);
+  const bookings = await Global.withLoading(activeList, Global.fetchJSON(`${TRIPS_API}/${tripId}/dog-care`));
   for (const booking of bookings) {
     (booking.archived ? archivedList : activeList).appendChild(dogCareBookingCardElement(booking));
   }
@@ -1518,7 +1518,7 @@ async function loadActivities() {
   for (const id of ["activities-list", "done-activities-list", "archived-activities-list"]) {
     document.getElementById(id).innerHTML = "";
   }
-  tripActivities = await Global.fetchJSON(`${TRIPS_API}/${tripId}/activities`);
+  tripActivities = await Global.withLoading(document.getElementById("activities-list"), Global.fetchJSON(`${TRIPS_API}/${tripId}/activities`));
   for (const activity of tripActivities) placeActivityCard(activity);
   refreshActivityCounts();
 }

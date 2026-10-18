@@ -462,7 +462,7 @@ function renderActivityLists() {
 }
 
 async function loadActivities() {
-  loadedActivities = await Global.fetchJSON(ACTIVITIES_API);
+  loadedActivities = await Global.withLoading(document.getElementById("activities-list"), Global.fetchJSON(ACTIVITIES_API));
   renderActivityLists();
 }
 

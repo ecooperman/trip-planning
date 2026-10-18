@@ -322,7 +322,7 @@ function renderMatrix() {
 // --- load -------------------------------------------------------------
 
 async function load() {
-  const data = await Global.fetchJSON(`${TRIPS_API}/${tripId}/stay-comparison`);
+  const data = await Global.withLoading(document.getElementById("matrix-wrap"), Global.fetchJSON(`${TRIPS_API}/${tripId}/stay-comparison`));
   state.home_currency = data.home_currency || "USD";
   state.criteria = data.criteria;
   state.stays = data.stays;

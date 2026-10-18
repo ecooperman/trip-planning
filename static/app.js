@@ -193,8 +193,8 @@ function refreshCounts() {
 }
 
 async function loadTrips() {
-  const trips = await Global.fetchJSON(TRIPS_API);
   const tripsList = document.getElementById("trips-list");
+  const trips = await Global.withLoading(tripsList, Global.fetchJSON(TRIPS_API));
   const archivedList = document.getElementById("archived-trips-list");
   tripsList.innerHTML = "";
   archivedList.innerHTML = "";

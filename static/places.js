@@ -353,7 +353,7 @@ function renderPlaceList() {
 }
 
 async function loadPlaces() {
-  loadedPlaces = await Global.fetchJSON(PLACES_API);
+  loadedPlaces = await Global.withLoading(document.getElementById("places-list"), Global.fetchJSON(PLACES_API));
   renderPlaceList();
 }
 
