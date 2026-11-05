@@ -23,3 +23,6 @@ Global.buildNav([
   { href: "/places.html", icon: "tag", label: "Places", active: active === "places" },
   { icon: "refresh", label: "Refresh", onclick: () => location.reload() },
 ]);
+
+// Who's signed in, with a Log out link, in the page header (shared-assets).
+Global.mountUserBadge();

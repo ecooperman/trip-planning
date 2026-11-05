@@ -3,7 +3,8 @@ from typing import Dict, List, Tuple
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from .. import crud, distance, schemas
+from .. import crud, distance, models, schemas
+from ..auth import current_user
 from ..deps import get_db
 
 router = APIRouter(prefix="/api", tags=["distance"])
@@ -18,10 +19,15 @@ MAX_DISTANCE_MATRIX_ELEMENTS = 100
 LocationRef = Tuple[str, int]  # (kind, id) - see schemas.LocationRef
 
 
-def _get_location(db: Session, kind: str, location_id: int):
+def _get_location(db: Session, user_id: int, kind: str, location_id: int):
+    """The activity or stay - or None if it doesn't exist or isn't the
+    caller's to see (an activity they own or that's on a trip shared with
+    them; a stay on such a trip)."""
     if kind == "activity":
-        return crud.get_activity(db, location_id)
-    return crud.get_stay(db, location_id)
+        activity = crud.get_activity(db, location_id)
+        return activity if activity is not None and crud.activity_role(db, user_id, activity) else None
+    stay = crud.get_stay(db, location_id)
+    return stay if stay is not None and crud.get_membership(db, user_id, stay.trip_id) else None
 
 
 def _location_address_query(kind: str, obj):
@@ -41,7 +47,9 @@ def _location_label(kind: str, obj) -> str:
 
 
 @router.post("/distance-matrix", response_model=schemas.DistanceMatrixResponse)
-def distance_matrix(payload: schemas.DistanceMatrixRequest, db: Session = Depends(get_db)):
+def distance_matrix(
+    payload: schemas.DistanceMatrixRequest, user: models.User = Depends(current_user), db: Session = Depends(get_db)
+):
     """Real walking/driving distance+duration between every origin and
     every destination given - one shared endpoint behind every distance
     surface in the app (a full pairwise matrix among a set of candidates,
@@ -60,7 +68,7 @@ def distance_matrix(payload: schemas.DistanceMatrixRequest, db: Session = Depend
 
     locations_by_ref: Dict[LocationRef, object] = {}
     for ref in set(origin_refs) | set(destination_refs):
-        obj = _get_location(db, *ref)
+        obj = _get_location(db, user.id, *ref)
         if obj is None:
             raise HTTPException(status_code=404, detail=f"{ref[0].capitalize()} {ref[1]} not found")
         locations_by_ref[ref] = obj

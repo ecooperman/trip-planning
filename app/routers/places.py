@@ -4,7 +4,9 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
-from .. import crud, schemas
+from .. import crud, models, schemas
+from ..access import PlaceAccess, place_access
+from ..auth import current_user
 from ..deps import get_db
 from ..scraping.service import scrape_place
 
@@ -17,34 +19,46 @@ router = APIRouter(prefix="/api/places", tags=["places"])
 MAX_PHOTO_BYTES = 20 * 1024 * 1024
 
 
+# Your own library of places. Someone a trip is shared with sees a place only
+# through an activity on that trip, and can never change it - only its owner can.
+
+
+def _check_categories(db: Session, owner_id: int, category_ids) -> None:
+    if not crud.categories_owned(db, owner_id, category_ids):
+        raise HTTPException(status_code=404, detail="Category not found")
+
+
 @router.get("", response_model=List[schemas.Place])
-def list_places(db: Session = Depends(get_db)):
-    return crud.get_places(db)
+def list_places(user: models.User = Depends(current_user), db: Session = Depends(get_db)):
+    return crud.get_places(db, user.id)
 
 
 @router.post("", response_model=schemas.Place)
-def create_place(place: schemas.PlaceCreate, db: Session = Depends(get_db)):
-    return crud.create_place(db, place)
+def create_place(place: schemas.PlaceCreate, user: models.User = Depends(current_user), db: Session = Depends(get_db)):
+    _check_categories(db, user.id, place.category_ids)
+    return crud.create_place(db, user.id, place)
 
 
 @router.get("/{place_id}", response_model=schemas.Place)
-def get_place(place_id: int, db: Session = Depends(get_db)):
-    place = crud.get_place(db, place_id)
-    if place is None:
-        raise HTTPException(status_code=404, detail="Place not found")
-    return place
+def get_place(access: PlaceAccess = Depends(place_access(models.ROLE_VIEW))):
+    return access.place
 
 
 @router.patch("/{place_id}", response_model=schemas.Place)
-def update_place(place_id: int, updates: schemas.PlaceUpdate, db: Session = Depends(get_db)):
-    place = crud.update_place(db, place_id, updates)
-    if place is None:
-        raise HTTPException(status_code=404, detail="Place not found")
-    return place
+def update_place(
+    place_id: int,
+    updates: schemas.PlaceUpdate,
+    access: PlaceAccess = Depends(place_access(models.ROLE_OWNER)),
+    db: Session = Depends(get_db),
+):
+    _check_categories(db, access.place.owner_id, updates.category_ids)
+    return crud.update_place(db, place_id, updates)
 
 
 @router.delete("/{place_id}")
-def delete_place(place_id: int, db: Session = Depends(get_db)):
+def delete_place(
+    place_id: int, access: PlaceAccess = Depends(place_access(models.ROLE_OWNER)), db: Session = Depends(get_db)
+):
     result = crud.delete_place(db, place_id)
     if result == "not_found":
         raise HTTPException(status_code=404, detail="Place not found")
@@ -54,10 +68,10 @@ def delete_place(place_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/{place_id}/scrape", response_model=schemas.Place)
-def trigger_scrape(place_id: int, db: Session = Depends(get_db)):
-    place = crud.get_place(db, place_id)
-    if place is None:
-        raise HTTPException(status_code=404, detail="Place not found")
+def trigger_scrape(
+    place_id: int, access: PlaceAccess = Depends(place_access(models.ROLE_OWNER)), db: Session = Depends(get_db)
+):
+    place = access.place
     if not place.url:
         raise HTTPException(status_code=400, detail="Place has no URL to scrape")
     return scrape_place(db, place_id, place.url)
@@ -67,14 +81,19 @@ def trigger_scrape(place_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/{place_id}/photos", response_model=List[schemas.PlaceImage])
-def list_place_photos(place_id: int, db: Session = Depends(get_db)):
-    if crud.get_place(db, place_id) is None:
-        raise HTTPException(status_code=404, detail="Place not found")
+def list_place_photos(
+    place_id: int, access: PlaceAccess = Depends(place_access(models.ROLE_VIEW)), db: Session = Depends(get_db)
+):
     return crud.get_place_images(db, place_id)
 
 
 @router.post("/{place_id}/photos", response_model=schemas.PlaceImage)
-async def upload_place_photo(place_id: int, file: UploadFile = File(...), db: Session = Depends(get_db)):
+async def upload_place_photo(
+    place_id: int,
+    file: UploadFile = File(...),
+    access: PlaceAccess = Depends(place_access(models.ROLE_OWNER)),
+    db: Session = Depends(get_db),
+):
     data = await file.read()
     if len(data) > MAX_PHOTO_BYTES:
         raise HTTPException(status_code=400, detail=f"Photo too large - max {MAX_PHOTO_BYTES // (1024 * 1024)}MB")
@@ -85,7 +104,12 @@ async def upload_place_photo(place_id: int, file: UploadFile = File(...), db: Se
 
 
 @router.get("/{place_id}/photos/{photo_id}")
-def download_place_photo(place_id: int, photo_id: int, db: Session = Depends(get_db)):
+def download_place_photo(
+    place_id: int,
+    photo_id: int,
+    access: PlaceAccess = Depends(place_access(models.ROLE_VIEW)),
+    db: Session = Depends(get_db),
+):
     # No Cache-Control override here - main.py's no_cache middleware forces
     # no-store on every response app-wide regardless, so a photo re-fetches
     # on every page load same as everything else in this app.
@@ -96,7 +120,12 @@ def download_place_photo(place_id: int, photo_id: int, db: Session = Depends(get
 
 
 @router.delete("/{place_id}/photos/{photo_id}")
-def delete_place_photo(place_id: int, photo_id: int, db: Session = Depends(get_db)):
+def delete_place_photo(
+    place_id: int,
+    photo_id: int,
+    access: PlaceAccess = Depends(place_access(models.ROLE_OWNER)),
+    db: Session = Depends(get_db),
+):
     ok = crud.delete_place_image(db, place_id, photo_id)
     if not ok:
         raise HTTPException(status_code=404, detail="Photo not found")

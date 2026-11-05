@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from .. import crud, models, schemas, stay_extraction
+from ..access import OnTrip, criterion_access, stay_access, trip_access
 from ..deps import get_db
 from ..scraping.page_text import fetch_page_text
 from ..scraping.service import _resolve as resolve_scrape
@@ -40,7 +41,10 @@ def _stay_dates_for(trip: models.Trip):
 
 @router.post("/trips/{trip_id}/stays/import", response_model=schemas.StayImportResult)
 def import_stays_from_urls(
-    trip_id: int, request: schemas.StayImportRequest, db: Session = Depends(get_db)
+    trip_id: int,
+    request: schemas.StayImportRequest,
+    member: models.TripMember = Depends(trip_access(models.ROLE_EDIT)),
+    db: Session = Depends(get_db),
 ):
     """For each URL: fetch a link preview + the page's body text, have
     Claude pull out price/room/amenity facts, and create one candidate
@@ -52,9 +56,7 @@ def import_stays_from_urls(
     same batch (to pick up the fetcher's improvements, or just to recheck
     prices) updates existing rows rather than piling up duplicates.
     """
-    trip = crud.get_trip(db, trip_id)
-    if trip is None:
-        raise HTTPException(status_code=404, detail="Trip not found")
+    trip = member.trip
 
     urls = []
     seen = set()
@@ -149,13 +151,14 @@ def import_stays_from_urls(
 
 @router.post("/stays/{stay_id}/extract-screenshot", response_model=schemas.Stay)
 async def extract_stay_from_screenshot(
-    stay_id: int, file: UploadFile = File(...), db: Session = Depends(get_db)
+    stay_id: int,
+    file: UploadFile = File(...),
+    access: OnTrip = Depends(stay_access(models.ROLE_EDIT)),
+    db: Session = Depends(get_db),
 ):
     """Re-read a stay's details from a screenshot of its listing - the
     reliable fallback when the URL importer hit a bot wall. Patches only
     the fields the model can see; re-flags the stay for review."""
-    if crud.get_stay(db, stay_id) is None:
-        raise HTTPException(status_code=404, detail="Stay not found")
     data = await file.read()
     if len(data) > MAX_SCREENSHOT_BYTES:
         raise HTTPException(status_code=400, detail=f"Image too large - max {MAX_SCREENSHOT_BYTES // (1024 * 1024)}MB")
@@ -176,14 +179,19 @@ async def extract_stay_from_screenshot(
 
 
 @router.get("/trips/{trip_id}/stay-criteria", response_model=list[schemas.StayCriterion])
-def list_stay_criteria(trip_id: int, db: Session = Depends(get_db)):
-    if crud.get_trip(db, trip_id) is None:
-        raise HTTPException(status_code=404, detail="Trip not found")
+def list_stay_criteria(
+    trip_id: int, member: models.TripMember = Depends(trip_access(models.ROLE_VIEW)), db: Session = Depends(get_db)
+):
     return crud.get_stay_criteria(db, trip_id)
 
 
 @router.post("/trips/{trip_id}/stay-criteria", response_model=schemas.StayCriterion)
-def create_stay_criterion(trip_id: int, data: schemas.StayCriterionCreate, db: Session = Depends(get_db)):
+def create_stay_criterion(
+    trip_id: int,
+    data: schemas.StayCriterionCreate,
+    member: models.TripMember = Depends(trip_access(models.ROLE_EDIT)),
+    db: Session = Depends(get_db),
+):
     criterion = crud.create_stay_criterion(db, trip_id, data)
     if criterion is None:
         raise HTTPException(status_code=404, detail="Trip not found")
@@ -191,7 +199,12 @@ def create_stay_criterion(trip_id: int, data: schemas.StayCriterionCreate, db: S
 
 
 @router.patch("/stay-criteria/{criterion_id}", response_model=schemas.StayCriterion)
-def update_stay_criterion(criterion_id: int, updates: schemas.StayCriterionUpdate, db: Session = Depends(get_db)):
+def update_stay_criterion(
+    criterion_id: int,
+    updates: schemas.StayCriterionUpdate,
+    access: OnTrip = Depends(criterion_access(models.ROLE_EDIT)),
+    db: Session = Depends(get_db),
+):
     criterion = crud.update_stay_criterion(db, criterion_id, updates)
     if criterion is None:
         raise HTTPException(status_code=404, detail="Criterion not found")
@@ -199,14 +212,22 @@ def update_stay_criterion(criterion_id: int, updates: schemas.StayCriterionUpdat
 
 
 @router.delete("/stay-criteria/{criterion_id}")
-def delete_stay_criterion(criterion_id: int, db: Session = Depends(get_db)):
+def delete_stay_criterion(
+    criterion_id: int, access: OnTrip = Depends(criterion_access(models.ROLE_EDIT)), db: Session = Depends(get_db)
+):
     if not crud.delete_stay_criterion(db, criterion_id):
         raise HTTPException(status_code=404, detail="Criterion not found")
     return {"ok": True}
 
 
 @router.put("/stays/{stay_id}/verdicts/{criterion_id}", response_model=schemas.StayCriterionVerdict)
-def set_verdict(stay_id: int, criterion_id: int, body: schemas.CriterionVerdictSet, db: Session = Depends(get_db)):
+def set_verdict(
+    stay_id: int,
+    criterion_id: int,
+    body: schemas.CriterionVerdictSet,
+    access: OnTrip = Depends(stay_access(models.ROLE_EDIT)),
+    db: Session = Depends(get_db),
+):
     row = crud.set_criterion_verdict(db, stay_id, criterion_id, body.verdict, body.note)
     if row is None:
         raise HTTPException(status_code=404, detail="Stay or criterion not found for this trip")
@@ -214,7 +235,9 @@ def set_verdict(stay_id: int, criterion_id: int, body: schemas.CriterionVerdictS
 
 
 @router.get("/trips/{trip_id}/stay-comparison", response_model=schemas.StayComparison)
-def get_stay_comparison(trip_id: int, db: Session = Depends(get_db)):
+def get_stay_comparison(
+    trip_id: int, member: models.TripMember = Depends(trip_access(models.ROLE_VIEW)), db: Session = Depends(get_db)
+):
     data = crud.get_stay_comparison(db, trip_id)
     if data is None:
         raise HTTPException(status_code=404, detail="Trip not found")

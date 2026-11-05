@@ -2,37 +2,245 @@ from datetime import date, datetime, timedelta
 from typing import Dict, List, Optional
 
 from sqlalchemy import func, or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from . import models, schemas
+from . import config, models, schemas
+
+# Parked owner of everything that existed before accounts did (see the
+# migration); the first person to sign in takes it over (get_or_create_user).
+LEGACY_OWNER_EMAIL = "legacy-owner@trips.invalid"
+
+# ---------------------------------------------------------------------------
+# Users
+# ---------------------------------------------------------------------------
+
+
+def normalize_email(email: str) -> str:
+    return email.strip().lower()
+
+
+def get_user_by_email(db: Session, email: str):
+    return db.query(models.User).filter(models.User.email == email).first()
+
+
+def _create_user(db: Session, email: str) -> models.User:
+    user = models.User(email=email)
+    db.add(user)
+    try:
+        db.commit()
+    except IntegrityError:
+        # Two first requests from the same person raced; theirs won.
+        db.rollback()
+        return get_user_by_email(db, email)
+    db.refresh(user)
+    return user
+
+
+def get_or_create_user(db: Session, email: str) -> models.User:
+    """The person behind an (already normalized) email, created on first
+    sight. The first one in who's allowed to takes over the pre-accounts data
+    by renaming the placeholder owner to their email - so it all becomes
+    theirs without moving a single row."""
+    user = get_user_by_email(db, email)
+    if user is not None:
+        return user
+    if config.ADOPT_LEGACY_ANY or email in config.ADMIN_EMAILS:
+        legacy = get_user_by_email(db, LEGACY_OWNER_EMAIL)
+        if legacy is not None:
+            legacy.email = email
+            db.commit()
+            return legacy
+    return _create_user(db, email)
+
+
+# ---------------------------------------------------------------------------
+# Access: who can reach what
+#
+# A trip is reached through the caller's TripMember row. Everything on a trip
+# (stays, travel, criteria, its activities) follows the trip's role. An
+# activity that isn't on any trip is its owner's alone. A place is its
+# owner's, and others can see it only through an activity on a trip shared
+# with them (it supplies that activity's name and address). Categories are
+# the owner's; others see them only attached to what they can see.
+# ---------------------------------------------------------------------------
+
+
+def _best_role(roles):
+    roles = [r for r in roles if r]
+    return max(roles, key=lambda r: models.ROLE_RANK[r]) if roles else None
+
+
+def get_membership(db: Session, user_id: int, trip_id: int):
+    return db.query(models.TripMember).filter_by(user_id=user_id, trip_id=trip_id).first()
+
+
+def activity_role(db: Session, user_id: int, activity: models.Activity):
+    """owner / edit / view, or None - the caller's best access to this activity."""
+    if activity.owner_id == user_id:
+        return models.ROLE_OWNER
+    roles = (
+        db.query(models.TripMember.role)
+        .join(models.TripActivity, models.TripActivity.trip_id == models.TripMember.trip_id)
+        .filter(models.TripActivity.activity_id == activity.id, models.TripMember.user_id == user_id)
+        .all()
+    )
+    return _best_role(role for (role,) in roles)
+
+
+def place_role(db: Session, user_id: int, place: models.Place):
+    if place.owner_id == user_id:
+        return models.ROLE_OWNER
+    reachable = (
+        db.query(models.Activity.id)
+        .join(models.TripActivity, models.TripActivity.activity_id == models.Activity.id)
+        .join(models.TripMember, models.TripMember.trip_id == models.TripActivity.trip_id)
+        .filter(models.Activity.place_id == place.id, models.TripMember.user_id == user_id)
+        .first()
+    )
+    return models.ROLE_VIEW if reachable else None
+
+
+def trip_views(db: Session, members):
+    """The member rows' trips, each decorated for the person the row belongs
+    to (see schemas.Trip): their role, who owns it, how many people share it."""
+    trip_ids = [m.trip_id for m in members]
+    member_counts = dict(
+        db.query(models.TripMember.trip_id, func.count(models.TripMember.user_id))
+        .filter(models.TripMember.trip_id.in_(trip_ids))
+        .group_by(models.TripMember.trip_id)
+        .all()
+    )
+    views = []
+    for member in members:
+        trip = member.trip
+        trip.my_role = member.role
+        trip.owner_email = trip.owner.email
+        trip.member_count = member_counts.get(member.trip_id, 1)
+        views.append(trip)
+    return views
+
+
+def get_trips(db: Session, user_id: int):
+    members = (
+        db.query(models.TripMember)
+        .join(models.Trip, models.Trip.id == models.TripMember.trip_id)
+        .filter(models.TripMember.user_id == user_id)
+        .order_by(
+            models.Trip.archived,
+            models.Trip.start_date.is_(None),
+            models.Trip.start_date,
+            models.Trip.created_at.desc(),
+        )
+        .all()
+    )
+    return trip_views(db, members)
+
+
+def trip_view(db: Session, member: models.TripMember):
+    return trip_views(db, [member])[0]
+
+
+def get_members(db: Session, trip_id: int):
+    return (
+        db.query(models.TripMember)
+        .filter(models.TripMember.trip_id == trip_id)
+        .order_by((models.TripMember.role == models.ROLE_OWNER).desc(), models.TripMember.user_id)
+        .all()
+    )
+
+
+def get_member(db: Session, trip_id: int, user_id: int):
+    return get_membership(db, user_id, trip_id)
+
+
+def add_member(db: Session, trip_id: int, email: str, role: str):
+    """Share a trip with an email. They needn't have signed in yet - their
+    user row is made now and simply picked up when they do. Returns the new
+    membership, or None if they're already on the trip."""
+    user = get_user_by_email(db, email) or _create_user(db, email)
+    if get_membership(db, user.id, trip_id) is not None:
+        return None
+    member = models.TripMember(trip_id=trip_id, user_id=user.id, role=role)
+    db.add(member)
+    db.commit()
+    db.refresh(member)
+    return member
+
+
+def set_member_role(db: Session, member: models.TripMember, role: str):
+    member.role = role
+    db.commit()
+    db.refresh(member)
+    return member
+
+
+def remove_member(db: Session, member: models.TripMember):
+    db.delete(member)
+    db.commit()
+
+
+def categories_owned(db: Session, owner_id: int, category_ids) -> bool:
+    """True if every id is a category of this owner (no stranger's labels
+    on someone's content)."""
+    ids = set(category_ids or [])
+    if not ids:
+        return True
+    return db.query(models.Category).filter(models.Category.owner_id == owner_id, models.Category.id.in_(ids)).count() == len(ids)
+
+
+def place_owned(db: Session, owner_id: int, place_id: int) -> bool:
+    return db.query(models.Place.id).filter(models.Place.owner_id == owner_id, models.Place.id == place_id).first() is not None
 
 # ---------------------------------------------------------------------------
 # Categories
 # ---------------------------------------------------------------------------
 
 
-def get_categories(db: Session):
-    return db.query(models.Category).order_by(models.Category.sort_order, models.Category.id).all()
+def get_categories(db: Session, owner_id: int):
+    return (
+        db.query(models.Category)
+        .filter(models.Category.owner_id == owner_id)
+        .order_by(models.Category.sort_order, models.Category.id)
+        .all()
+    )
 
 
-def get_category(db: Session, category_id: int):
-    return db.query(models.Category).filter(models.Category.id == category_id).first()
+def get_category(db: Session, owner_id: int, category_id: int):
+    return (
+        db.query(models.Category)
+        .filter(models.Category.owner_id == owner_id, models.Category.id == category_id)
+        .first()
+    )
 
 
-def create_category(db: Session, category: schemas.CategoryCreate):
+def category_name_taken(db: Session, owner_id: int, name: str, exclude_id: Optional[int] = None) -> bool:
+    query = db.query(models.Category).filter(
+        models.Category.owner_id == owner_id, func.lower(models.Category.name) == name.strip().lower()
+    )
+    if exclude_id is not None:
+        query = query.filter(models.Category.id != exclude_id)
+    return query.first() is not None
+
+
+def create_category(db: Session, owner_id: int, category: schemas.CategoryCreate):
     # Always appended to the end - same max+10 pattern as time-management's
     # Task.sort_order, leaving gaps so a later reorder only has to touch the
     # two rows being swapped.
-    max_order = db.query(func.max(models.Category.sort_order)).scalar() or 0
-    db_category = models.Category(**category.model_dump(), sort_order=max_order + 10)
+    max_order = (
+        db.query(func.max(models.Category.sort_order)).filter(models.Category.owner_id == owner_id).scalar() or 0
+    )
+    db_category = models.Category(owner_id=owner_id, **category.model_dump(), sort_order=max_order + 10)
     db.add(db_category)
     db.commit()
     db.refresh(db_category)
     return db_category
 
 
-def reorder_categories(db: Session, ordered_ids: List[int]):
-    db_categories = db.query(models.Category).filter(models.Category.id.in_(ordered_ids)).all()
+def reorder_categories(db: Session, owner_id: int, ordered_ids: List[int]):
+    db_categories = (
+        db.query(models.Category).filter(models.Category.owner_id == owner_id, models.Category.id.in_(ordered_ids)).all()
+    )
     by_id = {c.id: c for c in db_categories}
     for index, category_id in enumerate(ordered_ids):
         db_category = by_id.get(category_id)
@@ -40,11 +248,11 @@ def reorder_categories(db: Session, ordered_ids: List[int]):
             continue  # a stale id (deleted mid-drag elsewhere) - skip rather than error
         db_category.sort_order = (index + 1) * 10
     db.commit()
-    return get_categories(db)
+    return get_categories(db, owner_id)
 
 
-def update_category(db: Session, category_id: int, updates: schemas.CategoryUpdate):
-    db_category = get_category(db, category_id)
+def update_category(db: Session, owner_id: int, category_id: int, updates: schemas.CategoryUpdate):
+    db_category = get_category(db, owner_id, category_id)
     if db_category is None:
         return None
     for field, value in updates.model_dump(exclude_unset=True).items():
@@ -54,7 +262,7 @@ def update_category(db: Session, category_id: int, updates: schemas.CategoryUpda
     return db_category
 
 
-def delete_category(db: Session, category_id: int) -> str:
+def delete_category(db: Session, owner_id: int, category_id: int) -> str:
     """Returns 'deleted', 'not_found', or 'in_use' (refuses to delete a
     category still assigned to any activity or place - the router turns
     'in_use' into a 409, matching time-management's own Category delete).
@@ -62,7 +270,7 @@ def delete_category(db: Session, category_id: int) -> str:
     table, not the resolving category_ids property, which isn't backed by
     a plain column) - a place-linked activity's effective categories are
     checked via its place instead."""
-    db_category = get_category(db, category_id)
+    db_category = get_category(db, owner_id, category_id)
     if db_category is None:
         return "not_found"
     in_use = (
@@ -81,27 +289,19 @@ def delete_category(db: Session, category_id: int) -> str:
 # ---------------------------------------------------------------------------
 
 
-def get_trips(db: Session):
-    return db.query(models.Trip).order_by(
-        models.Trip.archived,
-        models.Trip.start_date.is_(None),
-        models.Trip.start_date,
-        models.Trip.created_at.desc(),
-    ).all()
-
-
 def get_trip(db: Session, trip_id: int):
     return db.query(models.Trip).filter(models.Trip.id == trip_id).first()
 
 
-def trip_cost_summary(db: Session):
-    """Per non-archived trip: summed cost of its non-archived linked
+def trip_cost_summary(db: Session, owner_id: int):
+    """Per non-archived trip this person owns (trips shared with them are
+    someone else's spending): summed cost of its non-archived linked
     activities plus its booked, non-archived stays, travel segments, and
     dog-care bookings. Costs are whole dollars in the DB; returned as
     cents. Consumed by the finances app's trip forecast (GET
     /api/trips/cost-summary)."""
     out = []
-    for trip in db.query(models.Trip).filter(models.Trip.archived.is_(False)).all():
+    for trip in db.query(models.Trip).filter(models.Trip.owner_id == owner_id, models.Trip.archived.is_(False)).all():
         act = (
             db.query(func.coalesce(func.sum(models.Activity.cost), 0))
             .join(models.TripActivity, models.TripActivity.activity_id == models.Activity.id)
@@ -163,12 +363,13 @@ def fill_missing_activity_cities(db: Session, trip_id: int, city: str) -> int:
     return len(activities)
 
 
-def create_trip(db: Session, trip: schemas.TripCreate):
-    db_trip = models.Trip(**trip.model_dump())
+def create_trip(db: Session, user: models.User, trip: schemas.TripCreate):
+    db_trip = models.Trip(owner_id=user.id, **trip.model_dump())
     db.add(db_trip)
+    db.flush()
+    db.add(models.TripMember(trip_id=db_trip.id, user_id=user.id, role=models.ROLE_OWNER))
     db.commit()
-    db.refresh(db_trip)
-    return db_trip
+    return trip_view(db, get_membership(db, user.id, db_trip.id))
 
 
 def update_trip(db: Session, trip_id: int, updates: schemas.TripUpdate):
@@ -270,7 +471,7 @@ def get_trip_stay_coverage(db: Session, trip_id: int) -> Optional[dict]:
 # ---------------------------------------------------------------------------
 
 
-def get_all_cities(db: Session) -> List[str]:
+def get_all_cities(db: Session, owner_id: int) -> List[str]:
     """Every distinct city in use, from Trip.city, Activity.own_city, and
     Place.city - powers the datalist on the trip/activity/place forms (so
     naming stays consistent no matter where you set it) and the city
@@ -279,25 +480,43 @@ def get_all_cities(db: Session) -> List[str]:
     place-linked activity's city is already covered by scanning Place.city
     directly. Not a managed table like Category - just whatever strings
     are actually in use, alphabetized."""
-    trip_cities = {c for (c,) in db.query(models.Trip.city).filter(models.Trip.city.isnot(None), models.Trip.city != "").distinct()}
-    activity_cities = {
-        c for (c,) in db.query(models.Activity.own_city).filter(models.Activity.own_city.isnot(None), models.Activity.own_city != "").distinct()
+    trip_cities = {
+        c
+        for (c,) in db.query(models.Trip.city)
+        .filter(models.Trip.owner_id == owner_id, models.Trip.city.isnot(None), models.Trip.city != "")
+        .distinct()
     }
-    place_cities = {c for (c,) in db.query(models.Place.city).filter(models.Place.city.isnot(None), models.Place.city != "").distinct()}
+    activity_cities = {
+        c
+        for (c,) in db.query(models.Activity.own_city)
+        .filter(models.Activity.owner_id == owner_id, models.Activity.own_city.isnot(None), models.Activity.own_city != "")
+        .distinct()
+    }
+    place_cities = {
+        c
+        for (c,) in db.query(models.Place.city)
+        .filter(models.Place.owner_id == owner_id, models.Place.city.isnot(None), models.Place.city != "")
+        .distinct()
+    }
     return sorted(trip_cities | activity_cities | place_cities)
 
 
 def get_activities(
-    db: Session, trip_id: Optional[int] = None, unassociated: bool = False
+    db: Session, owner_id: int, trip_id: Optional[int] = None, unassociated: bool = False
 ):
+    """With a trip_id: everything on that trip (the caller's access to the
+    trip has been checked - it may be someone else's, shared with them).
+    Otherwise: the caller's own activities."""
     query = db.query(models.Activity)
     if trip_id is not None:
         query = query.join(
             models.TripActivity, models.TripActivity.activity_id == models.Activity.id
         ).filter(models.TripActivity.trip_id == trip_id)
-    elif unassociated:
-        linked_ids = db.query(models.TripActivity.activity_id)
-        query = query.filter(~models.Activity.id.in_(linked_ids))
+    else:
+        query = query.filter(models.Activity.owner_id == owner_id)
+        if unassociated:
+            linked_ids = db.query(models.TripActivity.activity_id)
+            query = query.filter(~models.Activity.id.in_(linked_ids))
     return query.order_by(models.Activity.created_at.desc()).all()
 
 
@@ -305,20 +524,25 @@ def get_activity(db: Session, activity_id: int):
     return db.query(models.Activity).filter(models.Activity.id == activity_id).first()
 
 
-def _resolve_categories(db: Session, category_ids):
+def _resolve_categories(db: Session, category_ids, owner_id: Optional[int] = None):
     """[id, ...] -> [Category, ...] - the actual ORM objects a many-to-many
     relationship needs, since a plain @property setter (like the scalar
     own_* fields use) has no clean way to query the DB for them. Shared by
     activities and places."""
     if not category_ids:
         return []
-    return db.query(models.Category).filter(models.Category.id.in_(category_ids)).all()
+    query = db.query(models.Category).filter(models.Category.id.in_(category_ids))
+    if owner_id is not None:
+        query = query.filter(models.Category.owner_id == owner_id)
+    return query.all()
 
 
-def create_activity(db: Session, activity: schemas.ActivityCreate):
+def create_activity(db: Session, owner_id: int, activity: schemas.ActivityCreate):
+    """`owner_id` is whose content this is: the caller's own, or - for an
+    activity an editor adds to a trip shared with them - the trip owner's."""
     data = activity.model_dump(exclude={"trip_id", "category_ids"})
-    db_activity = models.Activity(**data)
-    db_activity.own_categories = _resolve_categories(db, activity.category_ids)
+    db_activity = models.Activity(owner_id=owner_id, **data)
+    db_activity.own_categories = _resolve_categories(db, activity.category_ids, owner_id)
     db.add(db_activity)
     db.commit()
     db.refresh(db_activity)
@@ -364,7 +588,7 @@ def update_activity(db: Session, activity_id: int, updates: schemas.ActivityUpda
     for field, value in update_data.items():
         setattr(db_activity, field, value)
     if category_ids is not None:
-        db_activity.own_categories = _resolve_categories(db, category_ids)
+        db_activity.own_categories = _resolve_categories(db, category_ids, db_activity.owner_id)
     # Address/city change distance directly; place_id changes it
     # indirectly (a newly linked - or unlinked - place has its own address/
     # city). A renamed activity or a new cost doesn't affect distance at
@@ -397,17 +621,17 @@ def delete_activity(db: Session, activity_id: int) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def get_places(db: Session):
-    return db.query(models.Place).order_by(models.Place.name).all()
+def get_places(db: Session, owner_id: int):
+    return db.query(models.Place).filter(models.Place.owner_id == owner_id).order_by(models.Place.name).all()
 
 
 def get_place(db: Session, place_id: int):
     return db.query(models.Place).filter(models.Place.id == place_id).first()
 
 
-def create_place(db: Session, place: schemas.PlaceCreate):
-    db_place = models.Place(**place.model_dump(exclude={"category_ids"}))
-    db_place.categories = _resolve_categories(db, place.category_ids)
+def create_place(db: Session, owner_id: int, place: schemas.PlaceCreate):
+    db_place = models.Place(owner_id=owner_id, **place.model_dump(exclude={"category_ids"}))
+    db_place.categories = _resolve_categories(db, place.category_ids, owner_id)
     db.add(db_place)
     db.commit()
     db.refresh(db_place)
@@ -423,7 +647,7 @@ def update_place(db: Session, place_id: int, updates: schemas.PlaceUpdate):
     for field, value in update_data.items():
         setattr(db_place, field, value)
     if category_ids is not None:
-        db_place.categories = _resolve_categories(db, category_ids)
+        db_place.categories = _resolve_categories(db, category_ids, db_place.owner_id)
     if "address" in update_data or "city" in update_data:
         # Every activity delegating to this place just had its effective
         # address/city change too (see models.Activity's address/city
@@ -489,6 +713,7 @@ def promote_activity_to_place(db: Session, activity_id: int):
         return None
 
     db_place = models.Place(
+        owner_id=db_activity.owner_id,
         name=db_activity.own_name,
         description=db_activity.own_description,
         url=db_activity.own_url,
@@ -1208,30 +1433,31 @@ def get_trip_dog_care_coverage(db: Session, trip_id: int) -> Optional[dict]:
 # --- plan links (see routers/plan_links.py) -----------------------------------
 
 
-def get_plan_linked_activities(db: Session, plan_id: Optional[int] = None):
-    query = db.query(models.Activity).filter(models.Activity.plan_id.isnot(None))
+def get_plan_linked_activities(db: Session, owner_id: int, plan_id: Optional[int] = None):
+    query = db.query(models.Activity).filter(models.Activity.owner_id == owner_id, models.Activity.plan_id.isnot(None))
     if plan_id is not None:
         query = query.filter(models.Activity.plan_id == plan_id)
     return query.order_by(models.Activity.created_at).all()
 
 
-def find_plan_activity(db: Session, plan_id: int, trip_id: Optional[int]):
+def find_plan_activity(db: Session, owner_id: int, plan_id: int, trip_id: Optional[int]):
     """The activity already created from this plan in the same place the
     import would put it - on this trip, or unassociated when trip_id is
     None - so re-importing a plan is a no-op rather than a duplicate."""
-    for activity in get_plan_linked_activities(db, plan_id):
+    for activity in get_plan_linked_activities(db, owner_id, plan_id):
         trip_ids = [t.id for t in activity.trips]
         if (trip_id is None and not trip_ids) or trip_id in trip_ids:
             return activity
     return None
 
 
-def create_activity_from_plan(db: Session, plan: dict, trip_id: Optional[int]):
+def create_activity_from_plan(db: Session, owner_id: int, plan: dict, trip_id: Optional[int]):
     """Copies a plan's details into a new activity (see models.Activity.
     plan_id on why it's a copy, not a live delegation), including its
     scraped preview so the card isn't blank until someone re-fetches."""
     db_activity = create_activity(
         db,
+        owner_id,
         schemas.ActivityCreate(
             name=plan["name"],
             description=plan.get("description"),

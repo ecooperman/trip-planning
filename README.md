@@ -58,6 +58,62 @@ others on that trip
 - `POST /api/stays`, `GET/PATCH/DELETE /api/stays/{id}`
 - `POST /api/stays/{id}/scrape`
 
+## Accounts and sharing
+
+There is no sign-in form. Cloudflare Access authenticates everyone before a
+request reaches the app and tells it who it was, so the app just reads that
+email (`app/auth.py`) and creates the person's account the first time it sees
+them. `GET /api/me` says who you are (and whether you're the administrator).
+
+- **Everything is yours unless shared.** Trips, activities, places and
+  categories each belong to the person who created them; a stranger's ids are a
+  404, never a 403.
+- **Sharing a trip** (owner, from the API for now - `GET/POST
+  /api/trips/{id}/members`, `PATCH/DELETE .../members/{user_id}`): by email, as
+  `edit` or `view`. The person needn't have signed in yet. They must also be
+  allowed through Cloudflare Access, or they never get this far.
+  - **owner** (creator, exactly one): everything, plus sharing, archiving and
+    deleting the trip. Anyone else can leave a trip shared with them.
+  - **edit**: works with the trip's content - its activities, stays, travel,
+    comparison criteria, dates and name.
+  - **view**: reads all of that, and can export it.
+- **What sharing shares.** A trip's activities belong to the *trip owner's*
+  library, even ones an editor adds: an activity on a trip is always its
+  owner's, so an editor's activity can't be moved onto the owner's trip (or the
+  owner's onto theirs) - the library rule is enforced when linking. An editor can
+  pick the owner's places and categories for those activities, but only the
+  owner edits places, categories and photos; others see a place only through an
+  activity on a trip shared with them. Unlinking an activity returns it to the
+  owner's library, out of the editor's sight.
+- **Dog care and the plans link are the administrator's alone** (the emails in
+  `ADMIN_EMAILS`): the server refuses them to everyone else, even on a shared
+  trip, and the pages don't show them.
+- **Other apps calling this one** (finances reads `GET /api/trips/cost-summary`,
+  social-planning sends plans to `POST /api/plan-links/import`) have no signed-in
+  person, so they send a shared secret as `X-Service-Token`
+  (`TRIPS_SERVICE_TOKEN`, the same value in each app's environment - put it in
+  `/etc/personal-apps/shared.env`) and act as the administrator. Only the
+  endpoints meant for them accept it; a wrong token is refused outright.
+- **Fetching URLs people type in is guarded** (`app/netguard.py`): http(s) only,
+  the host must resolve only to public addresses, redirects are checked hop by
+  hop and the body is size-capped, so no one can steer the server at its own
+  network. Paid API quotas are not built yet.
+- **Existing data:** the migration parks everything on a placeholder user and
+  the first administrator to sign in takes it over (set `ADMIN_EMAILS` to
+  restrict that to specific emails - do it before inviting anyone).
+- **Production sign-in check:** `CF_TEAM_DOMAIN` and `CF_ACCESS_AUD` are
+  required (see the root `DEPLOYMENT.md`); the app answers 503 to everything
+  without them and never trusts the plain email header.
+- **Local development:** every request is `DEV_USER_EMAIL` (default
+  `dev@localhost.test`); to be someone else send a
+  `Cf-Access-Authenticated-User-Email` header or run
+  `document.cookie = "dev_user=bob@example.com; path=/"` in the browser
+  console (delete the cookie to go back).
+
+Tests (`pytest`, after `pip install -r requirements-dev.txt`) run the real
+migrations on a throwaway database and check every endpoint against the access
+rules, plus sign-in tokens and the URL guard.
+
 ## Schema changes (Alembic)
 
 Schema is owned by migrations under `migrations/versions/`, not by wiping

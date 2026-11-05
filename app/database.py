@@ -1,7 +1,11 @@
+import os
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-DATABASE_URL = "sqlite:///./trips.db"
+# DATABASE_URL lets the tests (and migrations, see migrations/env.py) use a
+# throwaway database instead of the real one.
+DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./trips.db")
 
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

@@ -37,6 +37,45 @@ class TravelType(str, enum.Enum):
     other = "other"
 
 
+# What a person can do with a trip they're a member of. "owner" is whoever
+# created it (exactly one) and is the only one who can share or delete it;
+# "edit" works with its content (activities, stays, travel, criteria); "view"
+# can only read. Everything linked to a trip - its activities, and the places
+# and categories those use - belongs to the trip's owner (see
+# Activity.owner_id), which is what a member's access is to.
+ROLE_OWNER = "owner"
+ROLE_EDIT = "edit"
+ROLE_VIEW = "view"
+ROLE_RANK = {ROLE_VIEW: 1, ROLE_EDIT: 2, ROLE_OWNER: 3}
+
+
+class User(Base):
+    """Someone who has signed in (or been invited by email before they
+    have). Created on demand from the email Cloudflare Access vouches for -
+    there is no password or sign-up form (see app/auth.py)."""
+
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True)
+    # Always stored lowercased.
+    email = Column(String, unique=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class TripMember(Base):
+    """One person's access to one trip. The owner has a row too (role
+    "owner"), so "the trips I can reach" is always just my rows here."""
+
+    __tablename__ = "trip_members"
+
+    trip_id = Column(Integer, ForeignKey("trips.id"), primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
+    role = Column(String, nullable=False)
+
+    trip = relationship("Trip", back_populates="members")
+    user = relationship("User")
+
+
 class Category(Base):
     """A user-managed label (name + color) an activity or place can
     optionally belong to - zero, one, or several at once (see
@@ -48,9 +87,12 @@ class Category(Base):
     choice was the wrong constraint, not just a missing nice-to-have."""
 
     __tablename__ = "categories"
+    # Names are unique per person, not across everyone.
+    __table_args__ = (UniqueConstraint("owner_id", "name", name="uq_categories_owner_id_name"),)
 
     id = Column(Integer, primary_key=True)
-    name = Column(String, unique=True, nullable=False)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    name = Column(String, nullable=False)
     color = Column(String, nullable=False)
     # "dark" or "light" - which text color reads legibly against `color`,
     # picked by the user rather than computed, since contrast is subjective
@@ -122,6 +164,7 @@ class Trip(Base):
     __tablename__ = "trips"
 
     id = Column(Integer, primary_key=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     location = Column(String, nullable=False)
     # A clean city name, separate from `location` - `location` is more of a
     # trip title ("Toronto Music," "Raj's Cabin in New Lisbon Wisconsin")
@@ -145,6 +188,8 @@ class Trip(Base):
     activities = relationship(
         "Activity", secondary="trip_activities", back_populates="trips"
     )
+    members = relationship("TripMember", back_populates="trip", cascade="all, delete-orphan")
+    owner = relationship("User")
     # Unlike activities, a stay has no meaning outside its trip - so this is
     # a plain one-to-many (not a join table), and deleting a trip deletes
     # its stays with it rather than leaving them orphaned.
@@ -206,6 +251,11 @@ class Activity(Base):
     __tablename__ = "activities"
 
     id = Column(Integer, primary_key=True)
+    # Whose content this is. An activity on a trip always belongs to the
+    # trip's owner - even one an editor added - so sharing a trip shares
+    # exactly the owner's content, and the owner's places and categories are
+    # what it may use (see crud.associate_activity / access.py).
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     # nullable despite representing a required-when-unlinked field (see the
     # name property below and schemas.ActivityCreate's validator) - a
     # place-linked activity legitimately has no own_name at all.
@@ -414,6 +464,9 @@ class Place(Base):
     __tablename__ = "places"
 
     id = Column(Integer, primary_key=True)
+    # The owner's library: only they edit a place, and others see it only as
+    # part of an activity on a trip shared with them.
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     name = Column(String, nullable=False)
     description = Column(Text, nullable=True)
     url = Column(String, nullable=True)

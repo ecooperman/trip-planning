@@ -2,7 +2,7 @@ import re
 from datetime import datetime
 from typing import List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .models import ScrapeStatus, TravelType
 
@@ -144,6 +144,36 @@ class Trip(TripBase):
     id: int
     created_at: datetime
     updated_at: datetime
+    # Not columns - crud.trip_views() sets these on each trip for the person
+    # asking: what they can do with it, whose it is, and how many people have
+    # it. (Trips embedded in an activity don't carry them.)
+    my_role: Optional[Literal["owner", "edit", "view"]] = None
+    owner_email: Optional[str] = None
+    member_count: int = 1
+
+
+class Me(BaseModel):
+    """Who is signed in (GET /api/me). `is_admin` marks the app's
+    administrator - the only one offered dog care and the plans link."""
+
+    id: int
+    email: str
+    is_admin: bool
+
+
+class Member(BaseModel):
+    user_id: int
+    email: str
+    role: Literal["owner", "edit", "view"]
+
+
+class MemberAdd(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+    role: Literal["edit", "view"]
+
+
+class MemberUpdate(BaseModel):
+    role: Literal["edit", "view"]
 
 
 class DateRangeCoverage(BaseModel):

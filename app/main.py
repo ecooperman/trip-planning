@@ -12,6 +12,7 @@ from .routers import (
     categories,
     distance,
     dog_care,
+    me,
     places,
     plan_links,
     stay_compare,
@@ -85,6 +86,7 @@ async def no_cache(request: Request, call_next):
     return response
 
 
+app.include_router(me.router)
 app.include_router(trips.router)
 app.include_router(activities.router)
 app.include_router(places.router)

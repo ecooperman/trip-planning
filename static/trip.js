@@ -1700,9 +1700,18 @@ async function init() {
   initAddTravelSegmentForm();
   loadTravelSegments();
 
-  initAddDogCareForm();
-  loadDogCareBookings();
-  loadDogCareCoverage();
+  // Dog care and the link to the plans app are the app administrator's own
+  // business (the server refuses them to anyone else) - so for everyone
+  // else they're not just disabled but absent.
+  const me = await Global.currentUser();
+  const isAdmin = !!(me && me.is_admin);
+  if (isAdmin && currentTrip.my_role === "owner") {
+    initAddDogCareForm();
+    loadDogCareBookings();
+    loadDogCareCoverage();
+  } else {
+    document.getElementById("dog-care-section").style.display = "none";
+  }
 
   // Categories/places have to be loaded before anything that builds a
   // category <select> or place-link <select> (the add form below, and
@@ -1713,7 +1722,7 @@ async function init() {
   await loadCitiesCache();
 
   initAttachActivityPicker();
-  initImportPlansForm();
+  if (isAdmin) initImportPlansForm();
   initAddActivityToggle(document.getElementById("add-activity-container"), {
     tripId,
     tripCity: currentTrip.city,

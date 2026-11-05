@@ -33,3 +33,38 @@ GOOGLE_MAPS_API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY")
 # follows back to a plan.
 PLANS_API_BASE = os.environ.get("PLANS_API_BASE", "http://127.0.0.1:8020")
 PLANS_PUBLIC_URL = "https://plans.evancooperman.com" if ENV == "production" else "http://127.0.0.1:8020"
+
+# --- who is signed in (see app/auth.py) -------------------------------------
+# There is no login form: Cloudflare Access authenticates everyone before a
+# request reaches the app and attaches a signed token saying who it was. In
+# production the app verifies that token and REFUSES every request unless both
+# values below are set (from Zero Trust -> Access -> Applications -> (the app)
+# -> Overview; several tags may be comma-separated). They live in the shared
+# secrets file every app reads (/etc/personal-apps/shared.env, see
+# DEPLOYMENT.md), never in this repo.
+CF_TEAM_DOMAIN = os.environ.get("CF_TEAM_DOMAIN")  # e.g. "yourteam.cloudflareaccess.com"
+CF_ACCESS_AUD = os.environ.get("CF_ACCESS_AUD")
+
+# Locally there's no Cloudflare in front, so requests are treated as coming
+# from this address; a Cf-Access-Authenticated-User-Email header or a
+# `dev_user` cookie plays someone else. Never used in production.
+DEV_USER_EMAIL = os.environ.get("DEV_USER_EMAIL", "dev@localhost.test").strip().lower()
+
+# Administrators (comma-separated): the only people who get the features that
+# are really the app owner's own - dog care, the social-planning link. The
+# lists that existed before accounts also go to whoever signs in first as one
+# of them (or, unset in production, to whoever signs in first at all). Locally
+# it includes DEV_USER_EMAIL.
+ADMIN_EMAILS = {e.strip().lower() for e in os.environ.get("ADMIN_EMAILS", "").split(",") if e.strip()}
+ADOPT_LEGACY_ANY = not ADMIN_EMAILS and ENV == "production"
+if ENV != "production":
+    ADMIN_EMAILS.add(DEV_USER_EMAIL)
+
+# Other apps on this machine (finances reads trip costs, social-planning sends
+# plans over) call this one directly on 127.0.0.1 with no signed-in person.
+# They prove who they are with this shared secret (header X-Service-Token, same
+# value in every app's environment - put it in /etc/personal-apps/shared.env)
+# and act as SERVICE_USER_EMAIL, by default the first administrator. Unset, the
+# feature is off and those calls are refused.
+SERVICE_TOKEN = os.environ.get("TRIPS_SERVICE_TOKEN") or None
+SERVICE_USER_EMAIL = (os.environ.get("SERVICE_USER_EMAIL") or "").strip().lower() or None

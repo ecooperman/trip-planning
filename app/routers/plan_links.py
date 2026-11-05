@@ -9,6 +9,10 @@ that decides what gets copied and what counts as a duplicate.
 
 The link itself lives only here (Activity.plan_id), never mirrored into
 the plans database; the plans app reads it back via GET "" below.
+
+The plans live in the administrator's own social-planning app, so everything
+that reads from or writes plans is for the administrator only: signed in as
+one, or the plans app itself with the service token (see auth.admin_or_service).
 """
 from typing import List, Optional
 
@@ -16,7 +20,9 @@ import requests
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from .. import crud, schemas
+from .. import crud, models, schemas
+from ..access import check_role
+from ..auth import admin_or_service, user_or_service
 from ..config import PLANS_API_BASE, PLANS_PUBLIC_URL
 from ..deps import get_db
 
@@ -36,9 +42,11 @@ def _plans_get(path: str, params: Optional[dict] = None):
 
 
 @router.get("", response_model=List[schemas.PlanLink])
-def list_plan_links(plan_id: Optional[int] = None, db: Session = Depends(get_db)):
+def list_plan_links(
+    plan_id: Optional[int] = None, user: models.User = Depends(user_or_service), db: Session = Depends(get_db)
+):
     links = []
-    for activity in crud.get_plan_linked_activities(db, plan_id):
+    for activity in crud.get_plan_linked_activities(db, user.id, plan_id):
         trip = activity.trips[0] if activity.trips else None
         links.append(
             schemas.PlanLink(
@@ -55,12 +63,17 @@ def list_plan_links(plan_id: Optional[int] = None, db: Session = Depends(get_db)
 
 
 @router.get("/locations")
-def list_plan_locations():
+def list_plan_locations(user: models.User = Depends(admin_or_service)):
     return _plans_get("/api/locations")
 
 
 @router.get("/plans")
-def list_plans(location_id: Optional[int] = None, trip_id: Optional[int] = None, db: Session = Depends(get_db)):
+def list_plans(
+    location_id: Optional[int] = None,
+    trip_id: Optional[int] = None,
+    user: models.User = Depends(admin_or_service),
+    db: Session = Depends(get_db),
+):
     """Plans (optionally in one location), each annotated with whether it's
     already an activity on `trip_id` - so the picker can grey those out."""
     params = {"location_id": location_id} if location_id is not None else None
@@ -69,7 +82,7 @@ def list_plans(location_id: Optional[int] = None, trip_id: Optional[int] = None,
     if trip_id is not None:
         already = {
             a.plan_id
-            for a in crud.get_plan_linked_activities(db)
+            for a in crud.get_plan_linked_activities(db, user.id)
             if trip_id in [t.id for t in a.trips]
         }
     for plan in plans:
@@ -79,18 +92,27 @@ def list_plans(location_id: Optional[int] = None, trip_id: Optional[int] = None,
 
 
 @router.post("/import", response_model=schemas.PlanImportResult)
-def import_plans(request: schemas.PlanImportRequest, db: Session = Depends(get_db)):
-    if request.trip_id is not None and crud.get_trip(db, request.trip_id) is None:
-        raise HTTPException(status_code=404, detail="Trip not found")
+def import_plans(
+    request: schemas.PlanImportRequest, user: models.User = Depends(admin_or_service), db: Session = Depends(get_db)
+):
+    # Content added to a trip belongs to the trip's owner, even if the
+    # administrator is only an editor on it.
+    owner_id = user.id
+    if request.trip_id is not None:
+        member = crud.get_membership(db, user.id, request.trip_id)
+        if member is None:
+            raise HTTPException(status_code=404, detail="Trip not found")
+        check_role(member.role, models.ROLE_EDIT)
+        owner_id = member.trip.owner_id
 
     created, skipped = [], 0
     for plan_id in request.plan_ids:
-        if crud.find_plan_activity(db, plan_id, request.trip_id) is not None:
+        if crud.find_plan_activity(db, owner_id, plan_id, request.trip_id) is not None:
             skipped += 1
             continue
         plan = _plans_get(f"/api/plans/{plan_id}")
         if plan is None:
             raise HTTPException(status_code=404, detail=f"Plan {plan_id} not found in the plans app")
-        created.append(crud.create_activity_from_plan(db, plan, request.trip_id))
+        created.append(crud.create_activity_from_plan(db, owner_id, plan, request.trip_id))
 
     return schemas.PlanImportResult(created=len(created), skipped=skipped, activities=created)

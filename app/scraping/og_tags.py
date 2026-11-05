@@ -3,6 +3,7 @@ from typing import Optional
 import requests
 from bs4 import BeautifulSoup
 
+from ..netguard import UnsafeURL, safe_get
 from .base import ScrapedContent, ScraperError
 
 # Both Instagram and Facebook serve their stripped-down JS app shell (no
@@ -25,8 +26,10 @@ def fetch_og_tags(url: str, timeout: int = 10) -> ScrapedContent:
     rather than each re-implementing HTML parsing.
     """
     try:
-        response = requests.get(url, headers=DEFAULT_HEADERS, timeout=timeout)
+        response = safe_get(url, headers=DEFAULT_HEADERS, timeout=timeout)
         response.raise_for_status()
+    except UnsafeURL as exc:
+        raise ScraperError(str(exc)) from exc
     except requests.RequestException as exc:
         raise ScraperError(f"Request to {url} failed: {exc}") from exc
 

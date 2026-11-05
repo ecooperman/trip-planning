@@ -24,6 +24,8 @@ import re
 import requests
 from bs4 import BeautifulSoup
 
+from ..netguard import UnsafeURL, safe_get
+
 BROWSER_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
@@ -130,9 +132,11 @@ def fetch_page_text(url: str, timeout: int = 12, max_chars: int = MAX_CHARS) -> 
     or "" if nothing usable came back. Never raises."""
     html = ""
     try:
-        response = requests.get(url, headers=BROWSER_HEADERS, timeout=timeout)
+        response = safe_get(url, headers=BROWSER_HEADERS, timeout=timeout)
         response.raise_for_status()
         html = response.text
+    except UnsafeURL:
+        return ""  # an internal address: nothing to read, and not worth handing to the rendering proxy either
     except requests.RequestException:
         html = ""
 
