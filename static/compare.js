@@ -71,6 +71,7 @@ function renderCriteriaEditor() {
 
     const must = Global.el("input", { type: "checkbox" });
     must.checked = c.must_have;
+    if (!canEditTrip()) label.disabled = weight.disabled = must.disabled = true;
     must.addEventListener("change", () => patchCriterion(c.id, { must_have: must.checked }));
 
     const up = Global.el("button", { type: "button", class: "icon-btn", text: "↑", title: "Move up", onclick: () => moveCriterion(index, -1) });
@@ -199,6 +200,8 @@ function verdictButton(stay, criterion) {
     text: VERDICT_LABEL[current],
     title: `${criterion.label}: ${current}`,
   });
+  // A view-only member sees each verdict but can't cycle it.
+  if (!canEditTrip()) btn.disabled = true;
   btn.addEventListener("click", async () => {
     const next = VERDICTS[(VERDICTS.indexOf(current) + 1) % VERDICTS.length];
     // optimistic
@@ -269,7 +272,7 @@ function renderMatrix() {
     }
     const useBtn = Global.el("button", {
       type: "button",
-      class: "link-btn",
+      class: "link-btn needs-edit",
       text: "use as cost",
       title: "Copy this estimate into the stay's confirmed cost",
       onclick: async () => {
@@ -341,6 +344,7 @@ async function init() {
   }
   try {
     const trip = await Global.fetchJSON(`${TRIPS_API}/${tripId}`);
+    applyTripRole(trip);
     document.getElementById("page-title").textContent = `Compare stays — ${trip.location}`;
     document.getElementById("back-to-trip").href = `trip.html?id=${tripId}`;
   } catch (err) {

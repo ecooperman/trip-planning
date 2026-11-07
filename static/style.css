@@ -1584,3 +1584,33 @@ td.verdict-td {
   display: contents;
 }
 
+/* --- what each role is offered (see applyTripRole in common.js) ----------
+   The server refuses anything a role may not do; these rules just stop the
+   page from showing buttons that would dead-end. A view-only member sees the
+   trip without any way to change it; an editor sees everything except what
+   only the owner may do (archive or delete the trip, share it, create places
+   from activities). */
+
+body.role-view .needs-edit,
+body.role-view .needs-owner,
+body.role-edit .needs-owner {
+  display: none !important;
+}
+
+body.role-view .edit-toggle-btn,
+body.role-view .add-toggle,
+body.role-view .view-pane .item-actions,
+body.role-view #attach-activity-container,
+body.role-view #lock-toggle,
+body.role-view #add-criterion-form,
+body.role-view .criterion-row-actions {
+  display: none !important;
+}
+
+/* Read-only controls that stay visible because the value is information: the
+   done checkbox, a criterion's weight, a stay's verdict. */
+body.role-view .item-summary-done-toggle,
+body.role-view .verdict-cell {
+  cursor: default;
+}
+

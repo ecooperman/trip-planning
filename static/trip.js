@@ -39,7 +39,7 @@ function buildTripHeaderViewPane() {
 
   const archiveBtn = Global.el("button", {
     type: "button",
-    class: "secondary-btn",
+    class: "secondary-btn needs-owner",
     text: currentTrip.archived ? "Unarchive" : "Archive",
     onclick: async () => {
       currentTrip = await Global.fetchJSON(`${TRIPS_API}/${tripId}`, {
@@ -54,7 +54,7 @@ function buildTripHeaderViewPane() {
 
   const deleteBtn = Global.el("button", {
     type: "button",
-    class: "danger-btn",
+    class: "danger-btn needs-owner",
     text: "Delete trip",
     onclick: async () => {
       const deleted = await confirmAndDeleteTrip(currentTrip);
@@ -82,7 +82,7 @@ function buildTripHeaderViewPane() {
     actionBtns.push(
       Global.el("button", {
         type: "button",
-        class: "secondary-btn",
+        class: "secondary-btn needs-edit",
         text: "Fill missing activity cities",
         title: `Sets city to "${currentTrip.city}" on every activity in this trip that doesn't have one yet`,
         onclick: async () => {
@@ -519,7 +519,7 @@ function buildStayScrapeSection(stay) {
   const section = Global.el("div", { class: "scrape-section" });
   const scrapeBtn = Global.el("button", {
     type: "button",
-    class: "scrape-btn",
+    class: "scrape-btn needs-edit",
     text: stay.scrape_status === "not_started" ? "Fetch preview" : "Re-fetch preview",
     onclick: async (e) => {
       e.target.disabled = true;
@@ -545,7 +545,7 @@ function buildStayScrapeSection(stay) {
 // blocked the URL importer. Uploads an image to the extract endpoint,
 // which patches the worksheet fields and re-flags the stay for review.
 function buildStayScreenshotControl(stay) {
-  const section = Global.el("div", { class: "scrape-section" });
+  const section = Global.el("div", { class: "scrape-section needs-edit" });
   const fileInput = Global.el("input", { type: "file", accept: "image/png,image/jpeg,image/gif,image/webp", hidden: "hidden" });
   const btn = Global.el("button", {
     type: "button",
@@ -1718,6 +1718,7 @@ async function init() {
     return;
   }
 
+  applyTripRole(currentTrip);
   renderTripHeader();
   loadCoverage();
 

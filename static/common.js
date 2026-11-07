@@ -369,6 +369,23 @@ function sortActivitiesByCategory(activities, categoriesByIdMap) {
 // wired by the caller to a full re-render instead of a hide/show (so
 // unsaved typing is discarded cleanly rather than lingering hidden in the
 // DOM) - see the per-entity buildXEditPane functions.
+// What the signed-in person may do on the trip a page is showing. The server
+// enforces all of it (see app/access.py); this only keeps the page from
+// offering buttons that would dead-end. Call it with the trip once it's loaded:
+// it puts role-view / role-edit / role-owner on <body>, and style.css hides
+// anything marked .needs-edit (editors and owners only) or .needs-owner.
+// A page with no trip role (the activities and places libraries, which are
+// the person's own) simply gets no class and shows everything.
+function applyTripRole(trip) {
+  const body = document.body;
+  body.classList.remove("role-view", "role-edit", "role-owner");
+  if (trip && trip.my_role) body.classList.add(`role-${trip.my_role}`);
+}
+
+function canEditTrip() {
+  return !document.body.classList.contains("role-view");
+}
+
 function wireViewEditToggle(viewPane, editPane) {
   editPane.classList.add("hidden");
   const editBtn = viewPane.querySelector(".edit-toggle-btn");

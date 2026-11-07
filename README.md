@@ -106,6 +106,16 @@ them. `GET /api/me` says who you are (and whether you're the administrator).
   owner edits places, categories and photos; others see a place only through an
   activity on a trip shared with them. Unlinking an activity returns it to the
   owner's library, out of the editor's sight.
+- **The pages only offer what your role allows** (`applyTripRole` in `static/common.js`
+  puts `role-view` / `role-edit` / `role-owner` on `<body>`; `style.css` hides what
+  a role can't use). A view-only member sees the trip, stays, travel, activities,
+  agenda and comparison with no Edit, Add, Delete, Archive or Share, no tap-to-create
+  or drag on the agenda, and read-only inputs on the comparison; an editor sees all
+  of that except what only the owner may do (archive, delete, share, create a place
+  from an activity). Mark a new owner-only control `needs-owner` and an
+  editor-and-up control `needs-edit`. This is presentation only: the server refuses
+  everything regardless, and `tests/test_viewer_changes_nothing.py` calls every write
+  route as a view-only member to prove it.
 - **Dog care and the plans link are the administrator's alone** (the emails in
   `ADMIN_EMAILS`): the server refuses them to everyone else, even on a shared
   trip, and the pages don't show them.

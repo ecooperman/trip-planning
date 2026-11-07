@@ -154,8 +154,13 @@ function buildTripViewPane(card, trip) {
     },
   });
 
-  actions.append(deleteBtn, archiveBtn, Global.el("button", { type: "button", class: "secondary-btn edit-toggle-btn", text: "Edit" }));
-  pane.appendChild(actions);
+  // What this person may do with the trip: owners everything, editors change
+  // its details but can't archive or delete it, view-only members nothing
+  // (the server refuses the rest; see app/access.py).
+  const role = trip.my_role || "owner";
+  if (role === "owner") actions.append(deleteBtn, archiveBtn);
+  if (role !== "view") actions.append(Global.el("button", { type: "button", class: "secondary-btn edit-toggle-btn", text: "Edit" }));
+  if (actions.children.length) pane.appendChild(actions);
   return pane;
 }
 

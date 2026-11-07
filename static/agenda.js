@@ -538,7 +538,7 @@ function agendaEntryElement(activity, { nextActivity = null } = {}) {
   // card expanded and straight in its edit form, not just scrolled to.
   // A plain link, not gated by the lock - it doesn't touch the schedule
   // at all, so there's nothing for the lock to protect here.
-  links.appendChild(Global.el("a", { href: `activities.html?edit=${activity.id}`, class: "agenda-entry-link", text: "Edit →" }));
+  links.appendChild(Global.el("a", { href: `activities.html?edit=${activity.id}`, class: "agenda-entry-link needs-owner", text: "Edit →" }));
 
   if (links.children.length) entry.appendChild(links);
 
@@ -848,6 +848,9 @@ async function loadAgenda({ preserveScroll = false } = {}) {
   // Spinner on the first load only - a refresh after a drag/drop already has
   // the board on screen and shouldn't dim it.
   [trip, activities, stays] = await (preserveScroll ? fetchAll : Global.withLoading(document.getElementById("agenda-days"), fetchAll));
+  // A view-only member gets the agenda locked for good (no lock button, no
+  // dragging or tap-to-create); see applyTripRole.
+  applyTripRole(trip);
   document.getElementById("page-title").textContent = `${trip.location} — Agenda`;
   document.getElementById("back-link").href = `trip.html?id=${tripId}`;
   document.getElementById("export-link").href = `${TRIPS_API}/${tripId}/export.xlsx`;

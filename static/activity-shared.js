@@ -105,6 +105,8 @@ function activityCardElement(activity, opts = {}) {
   // "false") would still render it checked), same reason trip.js sets
   // bookedInput.checked this way rather than through Global.el()'s attrs.
   doneCheckbox.checked = activity.done;
+  // A view-only member still sees what's done, but can't change it.
+  doneCheckbox.disabled = !canEditTrip();
   doneCheckbox.addEventListener("click", (e) => e.stopPropagation());
   doneCheckbox.addEventListener("change", async () => {
     const done = doneCheckbox.checked;
@@ -350,7 +352,7 @@ function buildActivityViewPane(card, activity, { onChanged, onDeleted, onUnlink,
     actions.append(
       Global.el("button", {
         type: "button",
-        class: "secondary-btn",
+        class: "secondary-btn needs-owner",
         text: "Create a place from this",
         title: "Turns this activity's own name/address/etc. into a reusable place you can link future activities to",
         onclick: async () => {
@@ -598,7 +600,7 @@ function buildActivityScrapeSection(card, activity, { onChanged, onDeleted, onUn
   const section = Global.el("div", { class: "scrape-section" });
   const scrapeBtn = Global.el("button", {
     type: "button",
-    class: "scrape-btn",
+    class: "scrape-btn needs-edit",
     text: activity.scrape_status === "not_started" ? "Fetch preview" : "Re-fetch preview",
     onclick: async (e) => {
       e.target.disabled = true;
