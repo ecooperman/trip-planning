@@ -3,7 +3,7 @@ from typing import Dict, List, Optional
 
 from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from . import config, models, schemas
 
@@ -154,11 +154,24 @@ def get_member(db: Session, trip_id: int, user_id: int):
     return get_membership(db, user_id, trip_id)
 
 
-def add_member(db: Session, trip_id: int, email: str, role: str):
-    """Share a trip with an email. They needn't have signed in yet - their
-    user row is made now and simply picked up when they do. Returns the new
-    membership, or None if they're already on the trip."""
-    user = get_user_by_email(db, email) or _create_user(db, email)
+def get_account(db: Session, email: str):
+    """The person with this (already normalized) email if the app has an
+    account for them (they've signed in, or were let in by an approved
+    invite). Not the same as being able to sign in now - see
+    routers/trips.py's _can_sign_in, which also asks Cloudflare."""
+    if email == LEGACY_OWNER_EMAIL:
+        return None
+    return get_user_by_email(db, email)
+
+
+def create_account(db: Session, email: str) -> models.User:
+    """An account for someone Cloudflare lets in who hasn't opened this app yet."""
+    return get_account(db, email) or _create_user(db, email)
+
+
+def add_member(db: Session, trip_id: int, user: models.User, role: str):
+    """Give an existing user access to a trip. Returns the new membership, or
+    None if they're already on it."""
     if get_membership(db, user.id, trip_id) is not None:
         return None
     member = models.TripMember(trip_id=trip_id, user_id=user.id, role=role)
@@ -178,6 +191,115 @@ def set_member_role(db: Session, member: models.TripMember, role: str):
 def remove_member(db: Session, member: models.TripMember):
     db.delete(member)
     db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Asking for someone with no account to be let in. A trip's owner asks, an
+# administrator decides (see app/routers/invites.py for the Cloudflare step).
+
+
+def _is_admin_email(user: models.User) -> bool:
+    return user.email in config.ADMIN_EMAILS
+
+
+def invites_left(db: Session, user: models.User):
+    """How many more people this person may ask for, or None for no limit
+    (administrators). Each different email they've asked for counts once, in
+    any state - waiting, approved, declined - until they cancel a waiting one,
+    so being refused doesn't hand the slot back to be spent again."""
+    if _is_admin_email(user):
+        return None
+    used = (
+        db.query(func.count(func.distinct(models.Invite.email))).filter(models.Invite.invited_by_id == user.id).scalar()
+    )
+    return max(config.INVITES_PER_USER - used, 0)
+
+
+def create_invite(db: Session, trip_id: int, inviter: models.User, email: str, role: str):
+    """Returns (invite, None), or (None, reason) with reason "duplicate" (this
+    person was already asked for on this trip) or "none_left"."""
+    if db.query(models.Invite).filter_by(trip_id=trip_id, email=email).first() is not None:
+        return None, "duplicate"
+    left = invites_left(db, inviter)
+    asked_before = db.query(models.Invite).filter_by(invited_by_id=inviter.id, email=email).first() is not None
+    if left is not None and left <= 0 and not asked_before:
+        return None, "none_left"
+    invite = models.Invite(trip_id=trip_id, email=email, role=role, invited_by_id=inviter.id)
+    db.add(invite)
+    try:
+        db.commit()
+    except IntegrityError:  # the same request raced in twice
+        db.rollback()
+        return None, "duplicate"
+    db.refresh(invite)
+    return invite, None
+
+
+def get_trip_invite(db: Session, trip_id: int, email: str):
+    """The request already made for this email on this trip, in any state."""
+    return db.query(models.Invite).filter_by(trip_id=trip_id, email=email).first()
+
+
+def get_invite(db: Session, invite_id: int):
+    return (
+        db.query(models.Invite)
+        .options(joinedload(models.Invite.trip), joinedload(models.Invite.invited_by))
+        .filter(models.Invite.id == invite_id)
+        .first()
+    )
+
+
+def get_trip_invites(db: Session, trip_id: int):
+    """Requests on this trip still to be (or already) answered - approved ones
+    are people on the trip by now, so they show up as members instead."""
+    return (
+        db.query(models.Invite)
+        .filter(models.Invite.trip_id == trip_id, models.Invite.status != models.INVITE_APPROVED)
+        .order_by(models.Invite.id)
+        .all()
+    )
+
+
+def pending_invite_count(db: Session) -> int:
+    return db.query(func.count(models.Invite.id)).filter(models.Invite.status == models.INVITE_PENDING).scalar()
+
+
+def get_pending_invites(db: Session):
+    invites = (
+        db.query(models.Invite)
+        .options(joinedload(models.Invite.trip), joinedload(models.Invite.invited_by))
+        .filter(models.Invite.status == models.INVITE_PENDING)
+        .order_by(models.Invite.id)
+        .all()
+    )
+    for invite in invites:
+        invite.invited_by_email = invite.invited_by.email
+        invite.trip_name = invite.trip.location if invite.trip is not None else None
+    return invites
+
+
+def cancel_invite(db: Session, invite: models.Invite) -> None:
+    db.delete(invite)
+    db.commit()
+
+
+def grant_invite(db: Session, invite: models.Invite) -> models.Invite:
+    """Record that the invited person was let in: they get an account (picked
+    up when they first sign in) and their place on the trip."""
+    user = create_account(db, invite.email)
+    if invite.trip_id is not None:
+        add_member(db, invite.trip_id, user, invite.role)  # None if they're somehow on it already
+    invite.status = models.INVITE_APPROVED
+    invite.decided_at = datetime.utcnow()
+    db.commit()
+    return invite
+
+
+def decline_invite(db: Session, invite: models.Invite) -> models.Invite:
+    invite.status = models.INVITE_DECLINED
+    invite.decided_at = datetime.utcnow()
+    db.commit()
+    return invite
 
 
 def categories_owned(db: Session, owner_id: int, category_ids) -> bool:
@@ -424,6 +546,12 @@ def delete_trip(db: Session, trip_id: int, delete_activities: bool = False) -> b
     else:
         db_trip.activities = []
 
+    # Unfinished invite requests go with the trip; approved ones stay (the
+    # ORM nulls their trip_id) because the person was let in and still counts
+    # against what their inviter may ask for.
+    db.query(models.Invite).filter(
+        models.Invite.trip_id == db_trip.id, models.Invite.status != models.INVITE_APPROVED
+    ).delete()
     db.delete(db_trip)
     db.commit()
     return True

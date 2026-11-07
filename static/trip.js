@@ -100,6 +100,34 @@ function buildTripHeaderViewPane() {
       })
     );
   }
+  // The owner decides who else can see or edit the trip: a Share button that
+  // reveals the "Who has access" panel (shared-assets' access.js), loaded on
+  // first open and refreshed each time after.
+  let accessBox = null;
+  if (currentTrip.my_role === "owner") {
+    const panel = Global.el("div");
+    accessBox = Global.el("div", { class: "access-box hidden" }, [Global.el("label", { text: "Who has access" }), panel]);
+    const shareBtn = Global.el("button", { type: "button", class: "secondary-btn", "aria-expanded": "false", text: "Share" });
+    let access = null;
+    shareBtn.addEventListener("click", () => {
+      const open = accessBox.classList.toggle("hidden") === false;
+      shareBtn.setAttribute("aria-expanded", String(open));
+      shareBtn.textContent = open ? "Hide access" : "Share";
+      if (!open) return;
+      if (!access) {
+        access = Access.mount(panel, {
+          api: `${TRIPS_API}/${tripId}`,
+          noun: "trip",
+          name: () => currentTrip.location,
+          hint:
+            "Add someone who already uses the app, or ask for a new person to be let in - an administrator approves each request. " +
+            "Viewers can read this trip; editors can also change its stays, travel and activities. Only you can change who has access.",
+        });
+      }
+      access.reload();
+    });
+    actionBtns.push(shareBtn);
+  }
   actionBtns.push(archiveBtn, editBtn, deleteBtn);
   top.appendChild(Global.el("div", { class: "trip-header-actions" }, actionBtns));
   pane.appendChild(top);
@@ -116,6 +144,7 @@ function buildTripHeaderViewPane() {
       : null,
   ].filter(Boolean);
   pane.appendChild(Global.el("div", { class: "view-fields" }, fields));
+  if (accessBox) pane.appendChild(accessBox);
 
   return pane;
 }

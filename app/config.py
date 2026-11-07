@@ -68,3 +68,46 @@ if ENV != "production":
 # feature is off and those calls are refused.
 SERVICE_TOKEN = os.environ.get("TRIPS_SERVICE_TOKEN") or None
 SERVICE_USER_EMAIL = (os.environ.get("SERVICE_USER_EMAIL") or "").strip().lower() or None
+
+
+def _int_env(name: str, default: int) -> int:
+    try:
+        return int(os.environ.get(name, default))
+    except ValueError:
+        return default
+
+
+# --- letting new people in (see app/routers/invites.py) ----------------------
+# A trip's owner can ask for someone who has no account yet to be let in; an
+# administrator approves each request, which adds the email to the Cloudflare
+# Access group that lets people through the login gate. These settings live in
+# the shared secrets file (/etc/personal-apps/shared.env, see DEPLOYMENT.md).
+#
+# How many people each person may ask for (administrators are unlimited). Every
+# request counts unless the person cancels it while it's still waiting.
+INVITES_PER_USER = _int_env("INVITES_PER_USER", 5)
+
+# The Cloudflare API token needs only "Access: Organizations, Identity
+# Providers, and Groups Write". The group is the one the shared-apps Access
+# policy allows (the "Invitees" group). Without these, approving a request
+# works locally (the Cloudflare step is skipped) but is refused in production.
+CF_API_TOKEN = os.environ.get("CF_API_TOKEN")
+CF_ACCOUNT_ID = os.environ.get("CF_ACCOUNT_ID")
+CF_INVITEES_GROUP_ID = os.environ.get("CF_INVITEES_GROUP_ID")
+# Cloudflare's free Access plan allows 50 people; approving past this is refused.
+ACCESS_SEAT_CAP = _int_env("ACCESS_SEAT_CAP", 50)
+
+# --- telling the administrator a request is waiting (see app/notify.py) -----
+# Each channel is on when its settings are present; use any combination.
+PUBLIC_URL = "https://trips.evancooperman.com" if ENV == "production" else f"http://127.0.0.1:{PORT}"
+NTFY_TOPIC = os.environ.get("NTFY_TOPIC")  # anyone who knows the topic can read it: make it long and random
+NTFY_SERVER = os.environ.get("NTFY_SERVER", "https://ntfy.sh").rstrip("/")
+NTFY_TOKEN = os.environ.get("NTFY_TOKEN")  # only for a protected topic
+PUSHOVER_APP_TOKEN = os.environ.get("PUSHOVER_APP_TOKEN")
+PUSHOVER_USER_KEY = os.environ.get("PUSHOVER_USER_KEY")
+SMTP_HOST = os.environ.get("SMTP_HOST")
+SMTP_PORT = _int_env("SMTP_PORT", 587)  # 465 = SSL from the start, anything else = STARTTLS
+SMTP_USERNAME = os.environ.get("SMTP_USERNAME")
+SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD")
+SMTP_FROM = os.environ.get("SMTP_FROM")
+NOTIFY_EMAIL = os.environ.get("NOTIFY_EMAIL")  # where the email goes

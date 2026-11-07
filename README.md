@@ -68,15 +68,35 @@ them. `GET /api/me` says who you are (and whether you're the administrator).
 - **Everything is yours unless shared.** Trips, activities, places and
   categories each belong to the person who created them; a stranger's ids are a
   404, never a 403.
-- **Sharing a trip** (owner, from the API for now - `GET/POST
+- **Sharing a trip** (owner: the **Share** button on the trip page, or `GET/POST
   /api/trips/{id}/members`, `PATCH/DELETE .../members/{user_id}`): by email, as
-  `edit` or `view`. The person needn't have signed in yet. They must also be
-  allowed through Cloudflare Access, or they never get this far.
+  `edit` or `view`. The page's panel is `access.js` from shared-assets, the same
+  one the lists app uses. Only someone who can sign in *right now* can be added:
+  Cloudflare is asked (read-only) whether the email is an administrator or in the
+  Invitees group - not whether the app has an account for it, so someone removed
+  from the group can't be re-added without a new request. Anyone else is a 404
+  ("That person can't sign in yet"), which the page turns into an offer to
+  **request an invite**.
   - **owner** (creator, exactly one): everything, plus sharing, archiving and
     deleting the trip. Anyone else can leave a trip shared with them.
   - **edit**: works with the trip's content - its activities, stays, travel,
     comparison criteria, dates and name.
   - **view**: reads all of that, and can export it.
+- **Inviting people who can't sign in yet** works exactly as in the lists app
+  (see its README): an owner asks (`POST /api/trips/{id}/invites`, up to
+  `INVITES_PER_USER` different people, default 5, administrators unlimited and
+  auto-approved); the administrator approves or declines on `/invites.html`
+  (nav link with a waiting count; `GET /api/admin/invites`, `POST .../{id}/approve`
+  and `/decline`). Approval adds the email to the Cloudflare Invitees group
+  (`app/cloudflare.py`, refused in production if `CF_API_TOKEN`, `CF_ACCOUNT_ID`
+  and `CF_INVITEES_GROUP_ID` aren't set; `ACCESS_SEAT_CAP`, default 50) and puts
+  them on the trip, then **emails them** (`app/notify.py`, needs `SMTP_HOST` +
+  `SMTP_FROM`). The administrator is told of each request by ntfy, Pushover and/or
+  email (`NTFY_TOPIC`, `PUSHOVER_*`, `NOTIFY_EMAIL`). All of these settings are the
+  ones the lists app already uses, in `/etc/personal-apps/shared.env`. The quota and
+  the queue are per app (this app's `invites` table), so an approval here doesn't
+  use up lists invites - but anyone approved in either app is in the one shared
+  Cloudflare group, so can then be added directly to trips in both.
 - **What sharing shares.** A trip's activities belong to the *trip owner's*
   library, even ones an editor adds: an activity on a trip is always its
   owner's, so an editor's activity can't be moved onto the owner's trip (or the

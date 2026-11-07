@@ -9,6 +9,7 @@ function currentNavActive() {
   const path = window.location.pathname;
   if (path === "/activities.html") return "activities";
   if (path === "/places.html") return "places";
+  if (path === "/invites.html") return "invites"; // no tab of its own: none lit
   // "/", "/trip.html", and "/agenda.html" are all trip-context pages.
   return "trips";
 }
@@ -23,6 +24,26 @@ Global.buildNav([
   { href: "/places.html", icon: "tag", label: "Places", active: active === "places" },
   { icon: "refresh", label: "Refresh", onclick: () => location.reload() },
 ]);
+
+// The administrator also gets the Invites page, with how many requests are
+// waiting for them (the badge is kept current by invites.js).
+Global.currentUser().then((me) => {
+  const nav = document.querySelector(".app-nav");
+  if (!me || !me.is_admin || !nav) return;
+  const waiting = me.pending_invites || 0;
+  const count = Global.el("span", {
+    id: "nav-invite-count",
+    class: "item-badge item-badge-accent nav-count" + (waiting ? "" : " hidden"),
+    text: String(waiting),
+  });
+  const link = Global.el(
+    "a",
+    { href: "/invites.html", class: "app-nav-link" + (location.pathname === "/invites.html" ? " active" : "") },
+    [Global.el("span", { class: "app-nav-icon", "data-icon": "settings", "aria-hidden": "true" }), "Invites", count]
+  );
+  nav.insertBefore(link, nav.lastElementChild); // ahead of Refresh, which stays last
+  applyIcons(link);
+});
 
 // Who's signed in, with a Log out link, in the page header (shared-assets).
 Global.mountUserBadge();

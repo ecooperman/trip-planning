@@ -76,6 +76,34 @@ class TripMember(Base):
     user = relationship("User")
 
 
+INVITE_PENDING = "pending"
+INVITE_APPROVED = "approved"
+INVITE_DECLINED = "declined"
+
+
+class Invite(Base):
+    """A trip owner's request to let someone who has no account yet in, with
+    a role on that trip. An administrator approves it (the email is added to
+    Cloudflare's allowed group and the person is put on the trip) or declines
+    it. One request per person per trip. Approved requests outlive their trip
+    (trip_id goes NULL) so they keep counting against the inviter's allowance."""
+
+    __tablename__ = "invites"
+    __table_args__ = (UniqueConstraint("trip_id", "email", name="uq_invites_trip_id_email"),)
+
+    id = Column(Integer, primary_key=True)
+    trip_id = Column(Integer, ForeignKey("trips.id"), nullable=True)
+    email = Column(String, nullable=False)  # lowercased
+    role = Column(String, nullable=False)  # what they get on the trip: edit or view
+    invited_by_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    status = Column(String, nullable=False, default=INVITE_PENDING)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    decided_at = Column(DateTime, nullable=True)
+
+    trip = relationship("Trip", back_populates="invites")
+    invited_by = relationship("User")
+
+
 class Category(Base):
     """A user-managed label (name + color) an activity or place can
     optionally belong to - zero, one, or several at once (see
@@ -189,6 +217,8 @@ class Trip(Base):
         "Activity", secondary="trip_activities", back_populates="trips"
     )
     members = relationship("TripMember", back_populates="trip", cascade="all, delete-orphan")
+    # No delete cascade: approved requests outlive the trip (see Invite).
+    invites = relationship("Invite", back_populates="trip")
     owner = relationship("User")
     # Unlike activities, a stay has no meaning outside its trip - so this is
     # a plain one-to-many (not a join table), and deleting a trip deletes

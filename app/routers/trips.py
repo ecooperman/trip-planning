@@ -1,14 +1,15 @@
 import re
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from .. import crud, export, models, schemas
+from .. import cloudflare, config, crud, export, models, notify, schemas
 from ..access import ActivityAccess, activity_access, check_role, trip_access
-from ..auth import current_user, require_admin, user_or_service
+from ..auth import current_user, is_admin, require_admin, user_or_service
 from ..deps import get_db
+from .invites import approve
 
 router = APIRouter(prefix="/api/trips", tags=["trips"])
 
@@ -78,6 +79,28 @@ def _member_out(member: models.TripMember) -> schemas.Member:
     return schemas.Member(user_id=member.user_id, email=member.user.email, role=member.role)
 
 
+def _valid_email(raw: str) -> str:
+    email = crud.normalize_email(raw)
+    if not _EMAIL.match(email) or email == crud.LEGACY_OWNER_EMAIL:
+        raise HTTPException(status_code=400, detail="That doesn't look like an email address")
+    return email
+
+
+def _can_sign_in(db: Session, email: str) -> bool:
+    """Whether this person can get in right now. Cloudflare decides who passes
+    the login gate, so it's asked rather than inferring it from an account
+    existing - someone removed from the allowed group keeps their account but
+    can't sign in. With Cloudflare unconfigured (local development) all there
+    is to go on is whether they've signed in."""
+    try:
+        let_in = cloudflare.is_let_in(email)
+    except cloudflare.CloudflareError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+    if let_in is None:
+        return crud.get_account(db, email) is not None
+    return let_in
+
+
 @router.get("/{trip_id}/members", response_model=List[schemas.Member])
 def list_members(
     trip_id: int, member: models.TripMember = Depends(trip_access(models.ROLE_OWNER)), db: Session = Depends(get_db)
@@ -89,15 +112,36 @@ def list_members(
 def add_member(
     trip_id: int,
     body: schemas.MemberAdd,
+    background: BackgroundTasks,
     member: models.TripMember = Depends(trip_access(models.ROLE_OWNER)),
     db: Session = Depends(get_db),
 ):
-    email = crud.normalize_email(body.email)
-    if not _EMAIL.match(email):
-        raise HTTPException(status_code=400, detail="That doesn't look like an email address")
-    added = crud.add_member(db, trip_id, email, body.role)
-    if added is None:
-        raise HTTPException(status_code=409, detail="That person already has access to this trip")
+    """Only people who can already sign in can be added; anyone else has to be
+    asked for (POST .../invites) and approved first."""
+    email = _valid_email(body.email)
+    # Already on the trip? Say so first - it's the likeliest slip (typing your
+    # own address) and Cloudflare has nothing to do with it.
+    existing = crud.get_account(db, email)
+    on_trip = crud.get_member(db, trip_id, existing.id) if existing else None
+    if on_trip is not None:
+        if on_trip.role == models.ROLE_OWNER:
+            who = "That's you" if email == member.user.email else f"{email} owns this trip"
+            raise HTTPException(status_code=409, detail=f"{who} - the owner already has full access.")
+        raise HTTPException(
+            status_code=409,
+            detail=f"{email} is already on this trip and can {on_trip.role}. "
+            "To change that, use the dropdown beside their name.",
+        )
+    if not _can_sign_in(db, email):
+        raise HTTPException(status_code=404, detail="That person can't sign in yet")
+    added = crud.add_member(db, trip_id, crud.create_account(db, email), body.role)
+    if added is None:  # added by someone else a moment ago
+        raise HTTPException(status_code=409, detail=f"{email} is already on this trip.")
+    # Tell them (by email, if it's set up). Someone with no account yet has
+    # never opened the app, so say how signing in works.
+    background.add_task(
+        notify.tell_given_access, email, member.user.email, member.trip.location, trip_id, body.role, existing is None
+    )
     return _member_out(crud.get_member(db, trip_id, added.user_id))
 
 
@@ -134,6 +178,69 @@ def remove_member(
     if target.role == models.ROLE_OWNER:
         raise HTTPException(status_code=400, detail="The owner can't be removed - delete the trip instead")
     crud.remove_member(db, target)
+    return {"ok": True}
+
+
+# --- asking for someone new to be let in ---
+
+
+@router.get("/{trip_id}/invites", response_model=List[schemas.Invite])
+def list_invites(trip_id: int, member: models.TripMember = Depends(trip_access(models.ROLE_OWNER)), db: Session = Depends(get_db)):
+    """This trip's requests that are waiting or were declined."""
+    return crud.get_trip_invites(db, trip_id)
+
+
+@router.post("/{trip_id}/invites", response_model=schemas.Invite)
+def request_invite(
+    trip_id: int,
+    body: schemas.InviteCreate,
+    background: BackgroundTasks,
+    member: models.TripMember = Depends(trip_access(models.ROLE_OWNER)),
+    user: models.User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    """Ask for someone with no account to be let in, with a role on this trip.
+    The administrator is told and decides; the person is added to the trip when
+    they approve. An administrator's own request is approved straight away."""
+    email = _valid_email(body.email)
+    if _can_sign_in(db, email):
+        raise HTTPException(
+            status_code=409,
+            detail=f"{email} can already sign in, so there's nothing to request - use Add to put them on the trip.",
+        )
+    invite, problem = crud.create_invite(db, trip_id, user, email, body.role)
+    if problem == "duplicate":
+        earlier = crud.get_trip_invite(db, trip_id, email)
+        if earlier is not None and earlier.status == models.INVITE_DECLINED:
+            detail = f"Your request for {email} was declined. Only the administrator can let them in now."
+        else:
+            detail = f"You've already asked for {email} on this trip - it's waiting for the administrator to approve."
+        raise HTTPException(status_code=409, detail=detail)
+    if problem == "none_left":
+        raise HTTPException(
+            status_code=403,
+            detail=f"You've used all {config.INVITES_PER_USER} of your invites. Only the administrator can raise the limit.",
+        )
+    if is_admin(user):
+        return approve(db, invite, background)
+    background.add_task(notify.invite_requested, user.email, invite.email, invite.role)
+    return invite
+
+
+@router.delete("/{trip_id}/invites/{invite_id}")
+def cancel_invite(
+    trip_id: int,
+    invite_id: int,
+    member: models.TripMember = Depends(trip_access(models.ROLE_OWNER)),
+    db: Session = Depends(get_db),
+):
+    """Withdraw a request that's still waiting (this gives the invite back)."""
+    invite = crud.get_invite(db, invite_id)
+    if invite is None or invite.trip_id != trip_id:
+        raise HTTPException(status_code=404, detail="Invite not found")
+    if invite.status != models.INVITE_PENDING:
+        raise HTTPException(status_code=409, detail="Only a request that's still waiting can be withdrawn")
+    crud.cancel_invite(db, invite)
     return {"ok": True}
 
 

@@ -12,6 +12,7 @@ from .routers import (
     categories,
     distance,
     dog_care,
+    invites,
     me,
     places,
     plan_links,
@@ -69,6 +70,7 @@ app.get("/places.html", response_class=HTMLResponse)(_render("places.html"))
 app.get("/trip.html", response_class=HTMLResponse)(_render("trip.html"))
 app.get("/agenda.html", response_class=HTMLResponse)(_render("agenda.html"))
 app.get("/compare.html", response_class=HTMLResponse)(_render("compare.html"))
+app.get("/invites.html", response_class=HTMLResponse)(_render("invites.html"))
 
 
 @app.middleware("http")
@@ -87,6 +89,7 @@ async def no_cache(request: Request, call_next):
 
 
 app.include_router(me.router)
+app.include_router(invites.router)
 app.include_router(trips.router)
 app.include_router(activities.router)
 app.include_router(places.router)

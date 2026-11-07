@@ -50,6 +50,9 @@ def make_travel(person, trip_id, name="Flight"):
 
 
 def share(owner, trip_id, person, role):
+    # Only people with an account can be added, and an account is made by
+    # signing in - so they do that first.
+    person.get("/api/me")
     resp = owner.post(f"/api/trips/{trip_id}/members", {"email": person.email, "role": role})
     assert resp.status_code == 200, resp.text
     return resp.json()
@@ -326,9 +329,14 @@ def test_deleting_a_trip_removes_it_for_everyone(alice, bob):
     assert alice.get(f"/api/activities/{aid}").status_code == 200  # unlinked, still hers
 
 
-def test_invite_before_the_person_has_ever_signed_in(alice, carol):
+def test_someone_cloudflare_lets_in_can_be_added_before_they_have_ever_signed_in(alice, carol, monkeypatch):
+    from app import cloudflare
+
+    monkeypatch.setattr(cloudflare, "is_let_in", lambda email: email == carol.email)
     tid = make_trip(alice)["id"]
-    share(alice, tid, carol, "view")
+    resp = alice.post(f"/api/trips/{tid}/members", {"email": carol.email, "role": "view"})
+    assert resp.status_code == 200, resp.text
+    # Their account is picked up when they first open the app.
     assert [(t["location"], t["my_role"]) for t in carol.get("/api/trips").json()] == [("Lisbon", "view")]
 
 
@@ -445,3 +453,30 @@ def test_the_first_admin_to_sign_in_takes_over_pre_accounts_data(client, db, bob
     owner = Person(client, config.DEV_USER_EMAIL)
     assert [(t["location"], t["my_role"]) for t in owner.get("/api/trips").json()] == [("Old trip", "owner")]
     assert db.query(models.User).filter_by(email=crud.LEGACY_OWNER_EMAIL).first() is None
+
+
+def test_adding_someone_already_on_the_trip_says_so(alice, bob):
+    tid = make_trip(alice)["id"]
+    share(alice, tid, bob, "edit")
+
+    # Typing your own address is the likeliest slip - and it isn't about Cloudflare at all.
+    mine = alice.post(f"/api/trips/{tid}/members", {"email": alice.email, "role": "view"})
+    assert mine.status_code == 409
+    assert "That's you" in mine.json()["detail"]
+
+    again = alice.post(f"/api/trips/{tid}/members", {"email": bob.email.upper(), "role": "view"})
+    assert again.status_code == 409
+    detail = again.json()["detail"]
+    assert bob.email in detail and "already on this trip" in detail and "can edit" in detail
+
+
+def test_someone_on_the_trip_is_reported_even_if_cloudflare_no_longer_lets_them_in(alice, bob, monkeypatch):
+    from app import cloudflare
+
+    tid = make_trip(alice)["id"]
+    share(alice, tid, bob, "view")
+    monkeypatch.setattr(cloudflare, "is_let_in", lambda email: False)
+    resp = alice.post(f"/api/trips/{tid}/members", {"email": bob.email, "role": "edit"})
+    # Not "can't sign in yet", which would offer to invite someone already here.
+    assert resp.status_code == 409
+    assert "already on this trip" in resp.json()["detail"]
