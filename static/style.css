@@ -1577,3 +1577,10 @@ td.verdict-td {
   opacity: 0.55;
   cursor: default;
 }
+
+/* A badge slot that adds no box of its own, so the badge lays out as before.
+   Sharing from a trip's card updates it in place. */
+.access-slot {
+  display: contents;
+}
+

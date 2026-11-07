@@ -14,6 +14,11 @@ function tripCardElement(trip, { expanded = false } = {}) {
   const dateLabel = formatDateRange(trip.start_date, trip.end_date);
   if (dateLabel) summary.appendChild(Global.el("span", { class: "item-badge item-badge-date", text: dateLabel }));
   if (trip.archived) summary.appendChild(Global.el("span", { class: "item-badge item-badge-archived", text: "Archived" }));
+  // Who else is on the trip (or whose it is, if it's someone else's). In a slot
+  // so sharing from the card can update it in place.
+  const accessSlot = Global.el("span", { class: "access-slot" });
+  summary.appendChild(accessSlot);
+  setAccessBadge(accessSlot, trip);
 
   const agendaLink = Global.el("a", {
     href: `agenda.html?id=${trip.id}`,
@@ -44,6 +49,20 @@ function tripCardElement(trip, { expanded = false } = {}) {
   return card;
 }
 
+// Someone else's trip says what you can do with it; your own says how many
+// people have access once it's more than you.
+function setAccessBadge(slot, trip) {
+  if (!slot) return;
+  if (trip.my_role && trip.my_role !== "owner") {
+    const text = trip.my_role === "view" ? "View only" : `${trip.member_count} people`;
+    slot.replaceChildren(Global.el("span", { class: "item-badge item-badge-muted", title: `Owned by ${trip.owner_email}`, text }));
+  } else if (trip.member_count > 1) {
+    slot.replaceChildren(Global.el("span", { class: "item-badge item-badge-muted", title: "People with access", text: `${trip.member_count} people` }));
+  } else {
+    slot.replaceChildren();
+  }
+}
+
 function buildTripViewEdit(card, trip) {
   const wrap = Global.el("div", { class: "item-details-inner" });
   const viewPane = buildTripViewPane(card, trip);
@@ -64,11 +83,43 @@ function buildTripViewPane(card, trip) {
   ].filter(Boolean);
   pane.appendChild(Global.el("div", { class: "view-fields" }, fields));
 
-  pane.appendChild(
-    Global.el("div", { class: "view-links" }, [
-      Global.el("a", { href: `trip.html?id=${trip.id}`, class: "secondary-btn", text: "Open trip page →" }),
-    ])
-  );
+  const links = [Global.el("a", { href: `trip.html?id=${trip.id}`, class: "secondary-btn", text: "Open trip page →" })];
+
+  // The owner can give people access right here, without opening the trip: a
+  // Share button that reveals the "Who has access" panel (shared-assets'
+  // access.js) - loaded on first open, refreshed each time after.
+  let accessBox = null;
+  if (trip.my_role === "owner") {
+    const panel = Global.el("div");
+    accessBox = Global.el("div", { class: "access-box hidden" }, [Global.el("label", { text: "Who has access" }), panel]);
+    const shareBtn = Global.el("button", { type: "button", class: "secondary-btn", "aria-expanded": "false", text: "Share" });
+    let access = null;
+    shareBtn.addEventListener("click", () => {
+      const open = accessBox.classList.toggle("hidden") === false;
+      shareBtn.setAttribute("aria-expanded", String(open));
+      shareBtn.textContent = open ? "Hide access" : "Share";
+      if (!open) return;
+      if (!access) {
+        access = Access.mount(panel, {
+          api: `${TRIPS_API}/${trip.id}`,
+          noun: "trip",
+          name: () => trip.location,
+          hint:
+            "Add someone who already uses the app, or ask for a new person to be let in - an administrator approves each request. " +
+            "Viewers can read this trip; editors can also change its stays, travel and activities. Only you can change who has access.",
+          // Keep the header's people badge true as people come and go.
+          onMembers(members) {
+            trip.member_count = members.length;
+            setAccessBadge(card.querySelector(".access-slot"), trip);
+          },
+        });
+      }
+      access.reload();
+    });
+    links.push(shareBtn);
+  }
+  pane.appendChild(Global.el("div", { class: "view-links" }, links));
+  if (accessBox) pane.appendChild(accessBox);
 
   const actions = Global.el("div", { class: "item-actions" });
 

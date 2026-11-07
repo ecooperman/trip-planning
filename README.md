@@ -68,7 +68,8 @@ them. `GET /api/me` says who you are (and whether you're the administrator).
 - **Everything is yours unless shared.** Trips, activities, places and
   categories each belong to the person who created them; a stranger's ids are a
   404, never a 403.
-- **Sharing a trip** (owner: the **Share** button on the trip page, or `GET/POST
+- **Sharing a trip** (owner: the **Share** button on the trip page or inside the trip's
+  card on the trips list, which also shows a "people" or "View only" badge - or `GET/POST
   /api/trips/{id}/members`, `PATCH/DELETE .../members/{user_id}`): by email, as
   `edit` or `view`. The page's panel is `access.js` from shared-assets, the same
   one the lists app uses. Only someone who can sign in *right now* can be added:
