@@ -116,6 +116,19 @@ them. `GET /api/me` says who you are (and whether you're the administrator).
   editor-and-up control `needs-edit`. This is presentation only: the server refuses
   everything regardless, and `tests/test_viewer_changes_nothing.py` calls every write
   route as a view-only member to prove it.
+- **Paid services use each person's own keys** (`app/apikeys.py`, the Profile page at
+  `/profile.html`, reached from the email in the page header). Stay import and the
+  screenshot reader need an Anthropic key, the distance tool a Google Maps key (Distance
+  Matrix API enabled), and Jina is an optional extra for pages that block fetching.
+  A call uses the person's own saved key; failing that the server's key from the
+  environment (`ANTHROPIC_API_KEY`, `GOOGLE_MAPS_API_KEY`, `JINA_API_KEY`) **only if they
+  are an administrator**; anyone else without a key simply doesn't have the feature, and
+  the page says how to turn it on. So there's no cost to meter for other people. Keys
+  are checked with the service when saved (a refused one isn't kept), stored encrypted
+  with `KEY_ENCRYPTION_SECRET` (production refuses to save keys without it; never change
+  it, or saved keys become unreadable and people must re-enter them), never sent back to
+  the browser, and never logged. Cached distance answers need no key. `GET /api/me`
+  reports `can_use` per service so pages show a notice in place of a feature that would fail.
 - **Dog care and the plans link are the administrator's alone** (the emails in
   `ADMIN_EMAILS`): the server refuses them to everyone else, even on a shared
   trip, and the pages don't show them.

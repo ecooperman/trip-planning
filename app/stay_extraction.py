@@ -15,7 +15,6 @@ from typing import Optional
 import anthropic
 from pydantic import BaseModel
 
-from .config import ANTHROPIC_API_KEY
 
 # Not Opus: listing pages are long
 # and imported a dozen at a time, and pulling labelled facts out of
@@ -81,10 +80,10 @@ class ExtractedStay(BaseModel):
         }
 
 
-def _client() -> anthropic.Anthropic:
-    if not ANTHROPIC_API_KEY:
-        raise RuntimeError("ANTHROPIC_API_KEY is not configured")
-    return anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+def _client(api_key: str) -> anthropic.Anthropic:
+    """The key is the caller's (see app/apikeys.py): their own, or the house
+    key for an administrator. It is never read from the environment here."""
+    return anthropic.Anthropic(api_key=api_key)
 
 
 def extract_from_text(
@@ -92,6 +91,7 @@ def extract_from_text(
     og_title: Optional[str],
     og_description: Optional[str],
     page_text: str,
+    api_key: str,
 ) -> ExtractedStay:
     parts = [f"Listing URL: {url}"]
     if og_title:
@@ -99,7 +99,7 @@ def extract_from_text(
     if og_description:
         parts.append(f"Link-preview description: {og_description}")
     parts.append("\nPage text:\n" + (page_text or "(the page could not be read)"))
-    response = _client().messages.parse(
+    response = _client(api_key).messages.parse(
         model=MODEL,
         max_tokens=1024,
         system=SYSTEM_PROMPT,
@@ -109,9 +109,9 @@ def extract_from_text(
     return response.parsed_output
 
 
-def extract_from_image(image_bytes: bytes, media_type: str) -> ExtractedStay:
+def extract_from_image(image_bytes: bytes, media_type: str, api_key: str) -> ExtractedStay:
     b64 = base64.standard_b64encode(image_bytes).decode("ascii")
-    response = _client().messages.parse(
+    response = _client(api_key).messages.parse(
         model=MODEL,
         max_tokens=1024,
         system=SYSTEM_PROMPT,

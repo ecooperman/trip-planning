@@ -386,6 +386,29 @@ function canEditTrip() {
   return !document.body.classList.contains("role-view");
 }
 
+// Which paid services this person can use right now: their own key (saved on
+// the Profile page), or the server's for an administrator - never the server's
+// for anyone else (see app/apikeys.py). Load once per page before building
+// anything that depends on it, then ask userCan("anthropic" | "google_maps" | "jina").
+async function loadUserCaps() {
+  const me = await Global.currentUser();
+  window.userCaps = (me && me.can_use) || {};
+  return window.userCaps;
+}
+
+function userCan(provider) {
+  return !!(window.userCaps && window.userCaps[provider]);
+}
+
+// Shown in place of a feature the person has no key for: says what's missing
+// and how to turn it on, instead of a button that would only fail.
+function keyNotice(feature, serviceName) {
+  return Global.el("div", { class: "key-notice" }, [
+    `${feature} needs your own ${serviceName} key. `,
+    Global.el("a", { href: "/profile.html", text: "Add it on your profile →" }),
+  ]);
+}
+
 function wireViewEditToggle(viewPane, editPane) {
   editPane.classList.add("hidden");
   const editBtn = viewPane.querySelector(".edit-toggle-btn");

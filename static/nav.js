@@ -46,4 +46,4 @@ Global.currentUser().then((me) => {
 });
 
 // Who's signed in, with a Log out link, in the page header (shared-assets).
-Global.mountUserBadge();
+Global.mountUserBadge(undefined, { profileHref: "/profile.html" });

@@ -10,3 +10,4 @@ openpyxl
 anthropic
 python-multipart
 PyJWT[crypto]
+cryptography

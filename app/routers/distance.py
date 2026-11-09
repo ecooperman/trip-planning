@@ -3,7 +3,7 @@ from typing import Dict, List, Tuple
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from .. import crud, distance, models, schemas
+from .. import apikeys, crud, distance, models, schemas
 from ..auth import current_user
 from ..deps import get_db
 
@@ -146,8 +146,11 @@ def distance_matrix(
             missing_destination_refs = sorted({p[1] for p in missing_pairs})
             origin_queries = [_location_address_query(ref[0], locations_by_ref[ref]) for ref in missing_origin_refs]
             destination_queries = [_location_address_query(ref[0], locations_by_ref[ref]) for ref in missing_destination_refs]
+            # Only a lookup that really goes to Google needs a key (cached
+            # answers above are free): the person's own, or an administrator's house key.
+            api_key = apikeys.require(db, user, "google_maps")
             try:
-                matrix = distance.get_distance_matrix(origin_queries, destination_queries, mode=payload.mode)
+                matrix = distance.get_distance_matrix(origin_queries, destination_queries, api_key, mode=payload.mode)
             except RuntimeError as e:
                 raise HTTPException(status_code=503, detail=str(e))
             for i, o_ref in enumerate(missing_origin_refs):

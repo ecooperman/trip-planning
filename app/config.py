@@ -26,6 +26,11 @@ ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 # silent no-op) if this is unset.
 GOOGLE_MAPS_API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY")
 
+# Optional: a Jina Reader (r.jina.ai) key for the stay importer's fallback on
+# pages that come back thin. Like the two above it is the HOUSE key, used only
+# for administrators; everyone else brings their own (see app/apikeys.py).
+JINA_API_KEY = os.environ.get("JINA_API_KEY")
+
 # social-planning (the "plans" app) - trips pulls plans from it and the two
 # share Activity.plan_id links (see routers/plan_links.py). API calls go
 # server-to-server on 127.0.0.1, same as finances -> trips, which sidesteps
@@ -111,3 +116,16 @@ SMTP_USERNAME = os.environ.get("SMTP_USERNAME")
 SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD")
 SMTP_FROM = os.environ.get("SMTP_FROM")
 NOTIFY_EMAIL = os.environ.get("NOTIFY_EMAIL")  # where the email goes
+
+# --- people's own API keys (see app/apikeys.py) -----------------------------
+# Anthropic, Google Maps and Jina keys the person saves on their Profile page
+# are stored encrypted with this secret, so a copy of the database file (a
+# backup, a download for inspection) holds nothing usable. Any long random
+# string will do; generate one with:
+#   python3 -c "import secrets; print(secrets.token_urlsafe(48))"
+# Put it in the shared secrets file (/etc/personal-apps/shared.env) and never
+# change it afterwards - saved keys can't be read back with a different one, and
+# people would have to enter theirs again. Without it, production refuses to
+# save keys (locally a fixed development secret is used).
+KEY_ENCRYPTION_SECRET = os.environ.get("KEY_ENCRYPTION_SECRET")
+

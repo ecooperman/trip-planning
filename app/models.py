@@ -76,6 +76,26 @@ class TripMember(Base):
     user = relationship("User")
 
 
+class UserApiKey(Base):
+    """A person's own key for a paid service (Anthropic, Google Maps, Jina),
+    saved on their Profile page. Stored encrypted (app/apikeys.py) and never
+    sent back to the browser - only the last four characters are kept in the
+    clear so they can recognize which key it is."""
+
+    __tablename__ = "user_api_keys"
+    __table_args__ = (UniqueConstraint("user_id", "provider", name="uq_user_api_keys_user_id_provider"),)
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    provider = Column(String, nullable=False)  # anthropic | google_maps | jina
+    encrypted_key = Column(Text, nullable=False)
+    last4 = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user = relationship("User")
+
+
 INVITE_PENDING = "pending"
 INVITE_APPROVED = "approved"
 INVITE_DECLINED = "declined"

@@ -29,8 +29,6 @@ from typing import List, Optional
 import requests
 from pydantic import BaseModel
 
-from .config import GOOGLE_MAPS_API_KEY
-
 DISTANCE_MATRIX_URL = "https://maps.googleapis.com/maps/api/distancematrix/json"
 
 
@@ -41,13 +39,8 @@ class DistanceResult(BaseModel):
     duration_text: str
 
 
-def _client_configured() -> None:
-    if not GOOGLE_MAPS_API_KEY:
-        raise RuntimeError("GOOGLE_MAPS_API_KEY is not configured")
-
-
 def get_distance_matrix(
-    origins: List[str], destinations: List[str], mode: str = "walking"
+    origins: List[str], destinations: List[str], api_key: str, mode: str = "walking"
 ) -> List[List[Optional[DistanceResult]]]:
     """origins/destinations are address (or address-like) query strings, in
     the same order the caller wants rows/columns back in. Returns a
@@ -56,7 +49,6 @@ def get_distance_matrix(
     geocode, or there's no walking route - water, highway-only) rather than
     failing the whole request over one bad pair.
     """
-    _client_configured()
     if not origins or not destinations:
         return []
 
@@ -66,7 +58,7 @@ def get_distance_matrix(
             "origins": "|".join(origins),
             "destinations": "|".join(destinations),
             "mode": mode,
-            "key": GOOGLE_MAPS_API_KEY,
+            "key": api_key,
         },
         timeout=10,
     )

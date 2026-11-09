@@ -7,7 +7,7 @@ them into one text blob:
      rating, and *sometimes* a price actually live;
   2. the page's visible body text - amenities, house rules, descriptions;
   3. optionally, a JS-rendered version via a reader proxy (Jina) when
-     `JINA_API_KEY` is set and the direct fetch came back thin.
+     a Jina key is available and the direct fetch came back thin.
 
 Reality check: the big booking sites (Booking.com, Airbnb, hotel-brand
 sites, TripAdvisor) render the nightly price with JavaScript after a date
@@ -20,6 +20,7 @@ stub stay or the screenshot path, not an error.
 import json
 import os
 import re
+from typing import Optional
 
 import requests
 from bs4 import BeautifulSoup
@@ -40,12 +41,10 @@ MAX_CHARS = 18000
 # bot wall / JS shell and the reader-proxy fallback (if configured) kicks in.
 THIN_TEXT_THRESHOLD = 600
 
-# Optional - a Jina Reader (r.jina.ai) key. When set, listings that come
-# back thin from a direct fetch are retried through the proxy, which runs
-# the page's JavaScript first. Same never-committed, shell-set-locally /
-# shared-secrets-file-on-the-droplet pattern as ANTHROPIC_API_KEY /
-# GOOGLE_MAPS_API_KEY (see app/config.py).
-JINA_API_KEY = os.environ.get("JINA_API_KEY")
+# The Jina Reader (r.jina.ai) key is passed in by the caller (see
+# app/apikeys.py: the person's own, or an administrator's house key). When there
+# is one, listings that come back thin from a direct fetch are retried through
+# the proxy, which runs the page's JavaScript first.
 
 # JSON-LD keys worth surfacing to the model, flattened to "key: value"
 # lines. Nested price/rating objects are unwrapped by _flatten_ld.
@@ -112,13 +111,13 @@ def _visible_text(soup: BeautifulSoup) -> str:
     return " ".join(body.get_text(" ", strip=True).split())
 
 
-def _via_jina(url: str, timeout: int) -> str:
-    if not JINA_API_KEY:
+def _via_jina(url: str, timeout: int, jina_key: Optional[str]) -> str:
+    if not jina_key:
         return ""
     try:
         response = requests.get(
             f"https://r.jina.ai/{url}",
-            headers={"Authorization": f"Bearer {JINA_API_KEY}", "X-Return-Format": "markdown"},
+            headers={"Authorization": f"Bearer {jina_key}", "X-Return-Format": "markdown"},
             timeout=timeout,
         )
         response.raise_for_status()
@@ -127,7 +126,7 @@ def _via_jina(url: str, timeout: int) -> str:
     return " ".join(response.text.split())
 
 
-def fetch_page_text(url: str, timeout: int = 12, max_chars: int = MAX_CHARS) -> str:
+def fetch_page_text(url: str, timeout: int = 12, max_chars: int = MAX_CHARS, jina_key: Optional[str] = None) -> str:
     """One text blob (structured summary + visible text) for the extractor,
     or "" if nothing usable came back. Never raises."""
     html = ""
@@ -149,7 +148,7 @@ def fetch_page_text(url: str, timeout: int = 12, max_chars: int = MAX_CHARS) -> 
 
     # Thin direct fetch (bot wall / JS shell) - try the rendering proxy.
     if len(visible) < THIN_TEXT_THRESHOLD:
-        rendered = _via_jina(url, timeout=max(timeout, 30))
+        rendered = _via_jina(url, timeout=max(timeout, 30), jina_key=jina_key)
         if len(rendered) > len(visible):
             visible = rendered
 

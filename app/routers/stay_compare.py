@@ -10,8 +10,9 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
-from .. import crud, models, schemas, stay_extraction
+from .. import apikeys, crud, models, schemas, stay_extraction
 from ..access import OnTrip, criterion_access, stay_access, trip_access
+from ..auth import current_user
 from ..deps import get_db
 from ..scraping.page_text import fetch_page_text
 from ..scraping.service import _resolve as resolve_scrape
@@ -57,6 +58,11 @@ def import_stays_from_urls(
     prices) updates existing rows rather than piling up duplicates.
     """
     trip = member.trip
+    # Before any fetching: the person's own Anthropic key (or an administrator's
+    # house key), or a plain "add your key" message. Jina only widens what
+    # can be read, so it's optional.
+    anthropic_key = apikeys.require(db, member.user, "anthropic")
+    jina_key = apikeys.resolve(db, member.user, "jina")
 
     urls = []
     seen = set()
@@ -82,10 +88,10 @@ def import_stays_from_urls(
         og_description = scraped.description if scraped else None
         og_image = scraped.image_url if scraped else None
 
-        page_text = fetch_page_text(url)
+        page_text = fetch_page_text(url, jina_key=jina_key)
 
         try:
-            extracted = stay_extraction.extract_from_text(url, og_title, og_description, page_text)
+            extracted = stay_extraction.extract_from_text(url, og_title, og_description, page_text, anthropic_key)
         except RuntimeError as api_err:
             # No API key - a config problem, not a per-URL one. Stop here
             # rather than stubbing out every remaining URL identically.
@@ -154,11 +160,13 @@ async def extract_stay_from_screenshot(
     stay_id: int,
     file: UploadFile = File(...),
     access: OnTrip = Depends(stay_access(models.ROLE_EDIT)),
+    user: models.User = Depends(current_user),
     db: Session = Depends(get_db),
 ):
     """Re-read a stay's details from a screenshot of its listing - the
     reliable fallback when the URL importer hit a bot wall. Patches only
     the fields the model can see; re-flags the stay for review."""
+    anthropic_key = apikeys.require(db, user, "anthropic")
     data = await file.read()
     if len(data) > MAX_SCREENSHOT_BYTES:
         raise HTTPException(status_code=400, detail=f"Image too large - max {MAX_SCREENSHOT_BYTES // (1024 * 1024)}MB")
@@ -166,7 +174,7 @@ async def extract_stay_from_screenshot(
     if media_type not in _ANTHROPIC_IMAGE_TYPES:
         raise HTTPException(status_code=400, detail="Upload a JPEG, PNG, GIF, or WebP image")
     try:
-        extracted = stay_extraction.extract_from_image(data, media_type)
+        extracted = stay_extraction.extract_from_image(data, media_type, anthropic_key)
     except RuntimeError as err:
         raise HTTPException(status_code=503, detail=str(err))
     updated = crud.apply_stay_extraction(db, stay_id, extracted.worksheet_fields())

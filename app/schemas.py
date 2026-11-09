@@ -1,6 +1,6 @@
 import re
 from datetime import datetime
-from typing import List, Literal, Optional
+from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -163,6 +163,10 @@ class Me(BaseModel):
     invites_left: Optional[int] = None
     # Requests waiting for approval (administrators only, else 0).
     pending_invites: int = 0
+    # Which paid services this person can use right now: their own key, or the
+    # server's for an administrator (see app/apikeys.py). Pages hide or explain
+    # a feature that needs one they don't have.
+    can_use: Dict[str, bool] = {}
 
 
 class Member(BaseModel):
@@ -174,6 +178,43 @@ class Member(BaseModel):
 class MemberAdd(BaseModel):
     email: str = Field(min_length=3, max_length=254)
     role: Literal["edit", "view"]
+
+
+class ApiKeyStatus(BaseModel):
+    """One service on the Profile page. The key itself is never included -
+    only whether there is one and its last four characters."""
+
+    provider: str
+    label: str
+    feature: str
+    description: str
+    optional: bool
+    get_url: str
+    has_own_key: bool
+    own_key_readable: bool = True
+    last4: Optional[str] = None
+    added_at: Optional[datetime] = None
+    using_house_key: bool = False
+    usable: bool = False
+
+
+class ApiKeyList(BaseModel):
+    # False when the server has no KEY_ENCRYPTION_SECRET (production only),
+    # so keys can't be saved yet.
+    can_save: bool
+    keys: List[ApiKeyStatus]
+
+
+class ApiKeyIn(BaseModel):
+    key: str = Field(min_length=1, max_length=2000)
+
+
+class ApiKeySaved(BaseModel):
+    key: ApiKeyStatus
+    # True = the service accepted it; False never reaches here (a refused key
+    # isn't saved); None = couldn't be checked right now, saved unverified.
+    verified: Optional[bool] = None
+    note: str = ""
 
 
 class MemberUpdate(BaseModel):

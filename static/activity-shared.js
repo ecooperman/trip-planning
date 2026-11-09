@@ -1097,5 +1097,11 @@ function initDistanceTool(mountId, getActivities, getStays) {
   const mount = document.getElementById(mountId);
   if (!mount) return;
   mount.innerHTML = "";
+  // Real distances come from Google Maps, which needs the person's own key (an
+  // administrator uses the server's): without one, say so rather than offer a tool that fails.
+  if (!userCan("google_maps")) {
+    mount.appendChild(keyNotice("Comparing distances", "Google Maps"));
+    return;
+  }
   mount.appendChild(buildDistanceComparisonTool(getActivities, getStays));
 }

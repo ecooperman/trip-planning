@@ -33,6 +33,8 @@ ALLOWED_FOR_VIEWERS = {
     ("POST", "/api/categories"),
     ("POST", "/api/categories/reorder"),
     ("POST", "/api/distance-matrix"),  # a lookup, writes nothing of the trip's
+    ("PUT", "/api/profile/api-keys/{provider}"),  # their own API keys, nobody else's
+    ("DELETE", "/api/profile/api-keys/{provider}"),
     ("DELETE", "/api/trips/{trip_id}/members/{user_id}"),  # leaving the trip (checked separately below)
 }
 

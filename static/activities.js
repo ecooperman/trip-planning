@@ -532,6 +532,7 @@ if (prefillParam || editIdParam) {
 }
 
 async function init() {
+  await loadUserCaps(); // the distance tool needs the person's own Google Maps key
   // Categories/places have to be loaded before anything that builds a
   // category <select> or place-link <select> (the add form below, and
   // every activity card/edit-pane) - otherwise those selects would render

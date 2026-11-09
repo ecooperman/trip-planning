@@ -546,6 +546,10 @@ function buildStayScrapeSection(stay) {
 // which patches the worksheet fields and re-flags the stay for review.
 function buildStayScreenshotControl(stay) {
   const section = Global.el("div", { class: "scrape-section needs-edit" });
+  if (!userCan("anthropic")) {
+    section.appendChild(keyNotice("Filling details from a screenshot", "Anthropic"));
+    return section;
+  }
   const fileInput = Global.el("input", { type: "file", accept: "image/png,image/jpeg,image/gif,image/webp", hidden: "hidden" });
   const btn = Global.el("button", {
     type: "button",
@@ -1719,11 +1723,16 @@ async function init() {
   }
 
   applyTripRole(currentTrip);
+  await loadUserCaps(); // before anything that offers a feature needing someone's own API key
   renderTripHeader();
   loadCoverage();
 
   initAddStayForm();
-  initImportStaysForm();
+  if (userCan("anthropic")) {
+    initImportStaysForm();
+  } else {
+    document.getElementById("import-stays-container").appendChild(keyNotice("Importing stays from URLs", "Anthropic"));
+  }
   renderCompareStaysLink();
   loadStays();
 
