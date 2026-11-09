@@ -245,3 +245,8 @@ upgrade head`, and restarts the service. Needs these repo secrets set once
   on multiple trips later doesn't need a migration, just a small crud
   change. A stay's `trip_id` is a plain required foreign key instead, since
   a stay has no meaning outside its trip.
+
+## To do
+
+The running to-do list for all projects is `../TODO.md` (in the personal-projects
+folder, one level up; not in git).
