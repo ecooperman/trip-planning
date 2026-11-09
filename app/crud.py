@@ -260,6 +260,27 @@ def get_trip_invites(db: Session, trip_id: int):
     )
 
 
+def known_people(db: Session, user: models.User):
+    """Emails to suggest when this person is sharing something: everyone on a
+    trip they own (other than themselves) and everyone they have asked to be
+    let in (except those refused), lowercased and sorted. Only people they have
+    already dealt with - never everyone who has an account here."""
+    owned = (
+        db.query(models.TripMember.trip_id)
+        .filter(models.TripMember.user_id == user.id, models.TripMember.role == models.ROLE_OWNER)
+        .subquery()
+    )
+    shared_with = (
+        db.query(models.User.email)
+        .join(models.TripMember, models.TripMember.user_id == models.User.id)
+        .filter(models.TripMember.trip_id.in_(db.query(owned.c.trip_id)), models.User.id != user.id)
+    )
+    asked = db.query(models.Invite.email).filter(
+        models.Invite.invited_by_id == user.id, models.Invite.status != models.INVITE_DECLINED
+    )
+    return sorted({email.lower() for (email,) in shared_with.union(asked).all()} - {user.email.lower()})
+
+
 def pending_invite_count(db: Session) -> int:
     return db.query(func.count(models.Invite.id)).filter(models.Invite.status == models.INVITE_PENDING).scalar()
 

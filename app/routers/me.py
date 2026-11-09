@@ -1,3 +1,5 @@
+from typing import List
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
@@ -19,3 +21,10 @@ def get_me(user: models.User = Depends(current_user), db: Session = Depends(get_
         pending_invites=crud.pending_invite_count(db) if admin else 0,
         can_use=apikeys.available(db, user),
     )
+
+
+@router.get("/people", response_model=List[str])
+def get_people(user: models.User = Depends(current_user), db: Session = Depends(get_db)):
+    """Addresses to suggest in the sharing box: only people this person has
+    already shared with or asked for (see crud.known_people)."""
+    return crud.known_people(db, user)
