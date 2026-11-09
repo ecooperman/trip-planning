@@ -3,7 +3,9 @@ from typing import List
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from .. import cloudflare, crud, models, notify, schemas
+from shared_python import cloudflare
+
+from .. import crud, models, notify, schemas
 from ..auth import require_admin
 from ..deps import get_db
 

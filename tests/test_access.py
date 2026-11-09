@@ -330,9 +330,9 @@ def test_deleting_a_trip_removes_it_for_everyone(alice, bob):
 
 
 def test_someone_cloudflare_lets_in_can_be_added_before_they_have_ever_signed_in(alice, carol, monkeypatch):
-    from app import cloudflare
+    from shared_python import cloudflare
 
-    monkeypatch.setattr(cloudflare, "is_let_in", lambda email: email == carol.email)
+    monkeypatch.setattr(cloudflare, "is_let_in", lambda email, admin_emails=(): email == carol.email)
     tid = make_trip(alice)["id"]
     resp = alice.post(f"/api/trips/{tid}/members", {"email": carol.email, "role": "view"})
     assert resp.status_code == 200, resp.text
@@ -471,11 +471,11 @@ def test_adding_someone_already_on_the_trip_says_so(alice, bob):
 
 
 def test_someone_on_the_trip_is_reported_even_if_cloudflare_no_longer_lets_them_in(alice, bob, monkeypatch):
-    from app import cloudflare
+    from shared_python import cloudflare
 
     tid = make_trip(alice)["id"]
     share(alice, tid, bob, "view")
-    monkeypatch.setattr(cloudflare, "is_let_in", lambda email: False)
+    monkeypatch.setattr(cloudflare, "is_let_in", lambda email, admin_emails=(): False)
     resp = alice.post(f"/api/trips/{tid}/members", {"email": bob.email, "role": "edit"})
     # Not "can't sign in yet", which would offer to invite someone already here.
     assert resp.status_code == 409

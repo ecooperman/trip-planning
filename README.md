@@ -89,9 +89,9 @@ them. `GET /api/me` says who you are (and whether you're the administrator).
   auto-approved); the administrator approves or declines on `/invites.html`
   (nav link with a waiting count; `GET /api/admin/invites`, `POST .../{id}/approve`
   and `/decline`). Approval adds the email to the Cloudflare Invitees group
-  (`app/cloudflare.py`, refused in production if `CF_API_TOKEN`, `CF_ACCOUNT_ID`
+  (`shared_python.cloudflare` (the shared-python package), refused in production if `CF_API_TOKEN`, `CF_ACCOUNT_ID`
   and `CF_INVITEES_GROUP_ID` aren't set; `ACCESS_SEAT_CAP`, default 50) and puts
-  them on the trip, then **emails them** (`app/notify.py`, needs `SMTP_HOST` +
+  them on the trip, then **emails them** (`app/notify.py`, which calls `shared_python.notify`; needs `SMTP_HOST` +
   `SMTP_FROM`). The administrator is told of each request by ntfy, Pushover and/or
   email (`NTFY_TOPIC`, `PUSHOVER_*`, `NOTIFY_EMAIL`). All of these settings are the
   ones the lists app already uses, in `/etc/personal-apps/shared.env`. The quota and

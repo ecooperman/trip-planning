@@ -1,134 +1,23 @@
-"""Telling the administrator something needs them, over whichever channels are
-set up (see config.py): ntfy and Pushover (phone push) and email. A channel
-with no settings is skipped, and one failing never stops the others or the
-request that triggered it - this runs after the response is sent.
-"""
-import logging
-import smtplib
-from email.message import EmailMessage
+"""Telling people things - the sending lives in shared_python.notify; this is
+where Trip Planning's own wording and links go."""
 from typing import Optional
 
-import requests
+from shared_python import notify as shared
+from shared_python.notify import describe_failure, notify, send_email  # noqa: F401 - re-exported
 
 from . import config
 
-log = logging.getLogger(__name__)
-
-TIMEOUT = 10
-
-
-def _ntfy(title: str, message: str, link: Optional[str]) -> None:
-    if not config.NTFY_TOPIC:
-        return
-    payload = {"topic": config.NTFY_TOPIC, "title": title, "message": message}
-    if link:
-        payload["click"] = link
-    headers = {"Authorization": f"Bearer {config.NTFY_TOKEN}"} if config.NTFY_TOKEN else {}
-    requests.post(config.NTFY_SERVER, json=payload, headers=headers, timeout=TIMEOUT).raise_for_status()
-
-
-def _pushover(title: str, message: str, link: Optional[str]) -> None:
-    if not (config.PUSHOVER_APP_TOKEN and config.PUSHOVER_USER_KEY):
-        return
-    data = {"token": config.PUSHOVER_APP_TOKEN, "user": config.PUSHOVER_USER_KEY, "title": title, "message": message}
-    if link:
-        data["url"] = link
-    requests.post("https://api.pushover.net/1/messages.json", data=data, timeout=TIMEOUT).raise_for_status()
-
-
-def describe_failure(exc: Exception) -> str:
-    """What to log about a failed send. Normally only the exception's type
-    (some libraries put a URL or credentials in the message), but an SMTP
-    server's reply is its own text - "550 domain not verified" - never our
-    credentials, and without it a refusal can't be told from another one."""
-    if isinstance(exc, smtplib.SMTPResponseException):
-        reply = exc.smtp_error.decode("utf-8", "replace") if isinstance(exc.smtp_error, bytes) else str(exc.smtp_error)
-        return f"{type(exc).__name__} {exc.smtp_code} {_one_line(reply)[:200]}"
-    return type(exc).__name__
-
-
-def _one_line(text: str) -> str:
-    """Header text must be one line: a newline in a trip name would otherwise
-    be refused (or worse, start a new header)."""
-    return " ".join(str(text).split())
-
-
-def send_email(to: str, subject: str, body: str) -> bool:
-    """One plain-text email through the configured SMTP server. Does nothing
-    (and says so) without one. Raises on a failed send - callers that must not
-    fail wrap it (see notify() and tell_given_access())."""
-    if not (config.SMTP_HOST and config.SMTP_FROM):
-        return False
-    msg = EmailMessage()
-    msg["Subject"] = _one_line(subject)
-    msg["From"] = config.SMTP_FROM
-    msg["To"] = to
-    msg.set_content(body)
-    if config.SMTP_PORT == 465:
-        server = smtplib.SMTP_SSL(config.SMTP_HOST, config.SMTP_PORT, timeout=TIMEOUT)
-    else:
-        server = smtplib.SMTP(config.SMTP_HOST, config.SMTP_PORT, timeout=TIMEOUT)
-    with server:
-        if config.SMTP_PORT != 465:
-            server.starttls()
-        if config.SMTP_USERNAME:
-            server.login(config.SMTP_USERNAME, config.SMTP_PASSWORD or "")
-        server.send_message(msg)
-    return True
-
-
-def _email(title: str, message: str, link: Optional[str]) -> None:
-    """The administrator's email channel."""
-    if config.NOTIFY_EMAIL:
-        send_email(config.NOTIFY_EMAIL, title, f"{message}\n\n{link}" if link else message)
-
-
-CHANNELS = {"ntfy": _ntfy, "pushover": _pushover, "email": _email}
-
-
-def notify(title: str, message: str, link: Optional[str] = None) -> None:
-    for name, send in CHANNELS.items():
-        try:
-            send(title, message, link)
-        except Exception as exc:  # noqa: BLE001 - any failure of one channel must not reach the caller
-            # The type only: some libraries put the URL or credentials in the message.
-            log.warning("Notification via %s failed: %s", name, describe_failure(exc))
+APP_NAME = "Trip Planning"
 
 
 def invite_requested(inviter_email: str, invitee_email: str, role: str) -> None:
-    access = "edit" if role == "edit" else "view"
-    notify(
-        "Trips: invite waiting for approval",
-        f"{inviter_email} wants to let {invitee_email} in (can {access}).",
-        f"{config.PUBLIC_URL}/invites.html",
-    )
+    """Tell the administrator a trip's owner asked for someone to be let in."""
+    shared.invite_requested("Trips", inviter_email, invitee_email, role, f"{config.PUBLIC_URL}/invites.html")
 
 
 def tell_given_access(
     to: str, inviter_email: str, trip_name: str, trip_id: Optional[int], role: str, new_person: bool
 ) -> None:
-    """Tell someone they've been given access to a trip - by email only, since
-    they may never have used the app and can't be expected to have anything set
-    up for push. `new_person`: they haven't signed in here before, so say how
-    (Cloudflare emails them a one-time PIN). Best effort, like notify(): a
-    failure is logged (type only) and never reaches the caller."""
-    can = "edit" if role == "edit" else "view"
-    lines = [f'{inviter_email} gave you access to the trip "{trip_name}" in Trip Planning - you can {can} it.']
-    if trip_id is not None:
-        lines += ["", f"Open it here: {config.PUBLIC_URL}/trip.html?id={trip_id}"]
-    if new_person:
-        # Cloudflare's sign-in page can't be pre-filled from a link, so name the
-        # address to type there - it has to be this one, the one they were let in as.
-        lines += [
-            "",
-            "The first time you open it you'll be asked to sign in. Enter this email address:",
-            "",
-            f"    {to}",
-            "",
-            "and a one-time PIN will be sent to it - there is no password to set up.",
-        ]
-    try:
-        send_email(to, f'{inviter_email} shared "{trip_name}" with you', "\n".join(lines))
-    except Exception as exc:  # noqa: BLE001 - never fail the approval or the add that triggered this
-        log.warning("Telling the new person by email failed: %s", describe_failure(exc))
-
+    """Email someone that they've been given access to a trip."""
+    url = f"{config.PUBLIC_URL}/trip.html?id={trip_id}" if trip_id is not None else None
+    shared.tell_given_access(to, inviter_email, "trip", trip_name, url, role, new_person, APP_NAME)

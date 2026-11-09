@@ -11,3 +11,4 @@ anthropic
 python-multipart
 PyJWT[crypto]
 cryptography
+-e ../shared-python

@@ -5,7 +5,9 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from .. import cloudflare, config, crud, export, models, notify, schemas
+from shared_python import cloudflare
+
+from .. import config, crud, export, models, notify, schemas
 from ..access import ActivityAccess, activity_access, check_role, trip_access
 from ..auth import current_user, is_admin, require_admin, user_or_service
 from ..deps import get_db
@@ -93,7 +95,7 @@ def _can_sign_in(db: Session, email: str) -> bool:
     can't sign in. With Cloudflare unconfigured (local development) all there
     is to go on is whether they've signed in."""
     try:
-        let_in = cloudflare.is_let_in(email)
+        let_in = cloudflare.is_let_in(email, config.ADMIN_EMAILS)
     except cloudflare.CloudflareError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
     if let_in is None:

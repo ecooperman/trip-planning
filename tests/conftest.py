@@ -21,6 +21,7 @@ from alembic.config import Config  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app import config, crud, models  # noqa: E402
+from shared_python import settings as shared_settings  # noqa: E402
 from app.database import Base, SessionLocal, engine  # noqa: E402
 from app.main import app  # noqa: E402
 
@@ -61,9 +62,9 @@ def _nothing_leaves_the_machine(monkeypatch):
         "PUSHOVER_APP_TOKEN", "PUSHOVER_USER_KEY", "SMTP_HOST", "SMTP_USERNAME", "SMTP_PASSWORD",
         "SMTP_FROM", "NOTIFY_EMAIL",
     ):
-        monkeypatch.setattr(config, name, None)
+        monkeypatch.setattr(shared_settings, name, None)
     monkeypatch.setattr(config, "INVITES_PER_USER", 5)
-    monkeypatch.setattr(config, "ACCESS_SEAT_CAP", 50)
+    monkeypatch.setattr(shared_settings, "ACCESS_SEAT_CAP", 50)
 
     def refuse(*args, **kwargs):
         raise AssertionError(f"a test made a real network call: {args[:2]}")

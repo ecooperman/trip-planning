@@ -1,10 +1,12 @@
 """Letting new people in: a trip's owner asks, the administrator decides. The
-Cloudflare call and the notification are stubbed here (tests/test_cloudflare.py
-and tests/test_notify.py cover those); what matters in this file is who may ask
+Cloudflare call and the notification are stubbed here (shared-python's own tests
+cover those); what matters in this file is who may ask
 and decide, how many times, and what each outcome leaves behind."""
 import pytest
 
-from app import cloudflare, config, models, notify
+from shared_python import cloudflare, notify
+
+from app import config, models
 from tests.test_access import make_trip, share
 
 NEWBIE = "newbie@example.com"
@@ -50,6 +52,7 @@ def test_the_administrator_is_told_about_each_request(alice, allowed, sent):
     ask(alice, trip["id"])
     assert len(sent) == 1
     title, message, link = sent[0]
+    assert title == "Trips: invite waiting for approval"
     assert alice.email in message and NEWBIE in message and "edit" in message
     assert link == f"{config.PUBLIC_URL}/invites.html"
 
@@ -92,7 +95,7 @@ def test_only_the_owner_can_ask(alice, bob, carol):
 def let_in(monkeypatch):
     """Cloudflare is configured: the returned set is who's in its allowed group."""
     group = set()
-    monkeypatch.setattr(cloudflare, "is_let_in", lambda email: email in group)
+    monkeypatch.setattr(cloudflare, "is_let_in", lambda email, admin_emails=(): email in group)
     return group
 
 
@@ -149,7 +152,7 @@ def test_the_administrator_can_bring_back_someone_removed_from_the_group(admin, 
 
 
 def test_if_cloudflare_cant_be_asked_nobody_is_added_or_invited(alice, bob, monkeypatch):
-    def down(email):
+    def down(email, admin_emails=()):
         raise cloudflare.CloudflareError("Couldn't reach Cloudflare - try again in a moment")
 
     monkeypatch.setattr(cloudflare, "is_let_in", down)
@@ -393,7 +396,7 @@ def test_approving_emails_the_new_person_with_how_to_sign_in(alice, admin, allow
     to, subject, body = emails[0]
     assert to == NEWBIE
     assert alice.email in subject and "Lisbon" in subject
-    assert "you can edit it" in body
+    assert 'gave you access to the trip "Lisbon" in Trip Planning - you can edit it.' in body
     assert f"{config.PUBLIC_URL}/trip.html?id={trip['id']}" in body
     assert "one-time PIN" in body  # they've never signed in here
     assert f"\n    {NEWBIE}\n" in body  # the address to type on the sign-in page, on its own line
@@ -446,3 +449,14 @@ def test_a_failing_email_doesnt_undo_the_approval(alice, admin, allowed, sent, m
     assert resp.status_code == 200 and resp.json()["status"] == "approved"
     assert allowed == [NEWBIE]
     assert "OSError" in caplog.text and "hunter2" not in caplog.text and "secret-user" not in caplog.text
+
+
+def test_the_apps_administrators_are_what_cloudflare_is_asked_about(alice, bob, monkeypatch):
+    """Whether someone can sign in includes "they are an administrator" (they get in
+    by their own policy), and which emails those are is this app's to say."""
+    asked = []
+    monkeypatch.setattr(cloudflare, "is_let_in", lambda email, admin_emails=(): asked.append(set(admin_emails)) or True)
+    trip = make_trip(alice)
+    bob.get("/api/me")
+    assert alice.post(f"/api/trips/{trip['id']}/members", {"email": bob.email, "role": "view"}).status_code == 200
+    assert asked == [config.ADMIN_EMAILS] and config.DEV_USER_EMAIL in asked[0]

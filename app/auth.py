@@ -1,23 +1,17 @@
 """Who is making this request.
 
 There are no passwords or sign-up forms: every request has already been
-through Cloudflare Access, which attaches the signed-in person's email (as a
-signed token, Cf-Access-Jwt-Assertion, and as a plain header). We read it,
-and create that person's User row the first time we see them.
-
-Production verifies the token's signature and audience against Cloudflare's
-published keys (needs CF_TEAM_DOMAIN + CF_ACCESS_AUD, see config.py). Without
-them it refuses every request rather than trusting the plain email header:
-that header is only set by Access, and a hostname that bypasses Access (or is
-misconfigured) lets a visitor send any value they like, which would mean
-signing in as anyone.
+through Cloudflare Access, which attaches the signed-in person's email.
+shared_python.auth verifies it (and refuses everything in production if that
+isn't configured); here it becomes this app's own User row, created the first
+time we see them. Other apps on this machine (finances, social-planning) have no
+signed-in person and call in with a shared X-Service-Token instead.
 """
 import hmac
 import logging
-from typing import Optional
 
-import jwt
 from fastapi import Depends, HTTPException, Request
+from shared_python import auth as cloudflare_access
 from sqlalchemy.orm import Session
 
 from . import config, crud, models
@@ -25,56 +19,12 @@ from .deps import get_db
 
 log = logging.getLogger(__name__)
 
-EMAIL_HEADER = "cf-access-authenticated-user-email"
-JWT_HEADER = "cf-access-jwt-assertion"
 SERVICE_HEADER = "x-service-token"
-
-_jwks_client: Optional[jwt.PyJWKClient] = None
-
-
-def _signing_key(token: str):
-    """Cloudflare's public key for this token (cached by PyJWKClient)."""
-    global _jwks_client
-    if _jwks_client is None:
-        # Forgive a pasted "https://" or trailing slash - it's just a hostname.
-        domain = config.CF_TEAM_DOMAIN.strip().removeprefix("https://").removeprefix("http://").rstrip("/")
-        _jwks_client = jwt.PyJWKClient(f"https://{domain}/cdn-cgi/access/certs", lifespan=3600)
-    return _jwks_client.get_signing_key_from_jwt(token).key
-
-
-def _email_from_verified_token(token: str) -> str:
-    try:
-        claims = jwt.decode(
-            token,
-            _signing_key(token),
-            algorithms=["RS256"],
-            audience=[aud.strip() for aud in config.CF_ACCESS_AUD.split(",") if aud.strip()],
-            options={"require": ["exp", "aud"]},
-        )
-    except jwt.PyJWTError as exc:
-        log.warning("Rejected Cloudflare Access token: %s", exc)
-        raise HTTPException(status_code=401, detail="Invalid sign-in token")
-    email = claims.get("email")
-    if not email:
-        # e.g. a service token - it identifies a machine, not a person.
-        raise HTTPException(status_code=401, detail="Sign-in token has no email")
-    return email
 
 
 def request_email(request: Request) -> str:
-    headers = request.headers
-    if config.ENV == "production":
-        if not (config.CF_TEAM_DOMAIN and config.CF_ACCESS_AUD):
-            log.error("CF_TEAM_DOMAIN and CF_ACCESS_AUD must be set in production - refusing all requests")
-            raise HTTPException(status_code=503, detail="Sign-in is not configured on the server")
-        token = headers.get(JWT_HEADER)
-        if not token:
-            raise HTTPException(status_code=401, detail="Not signed in")
-        return _email_from_verified_token(token)
-    # Local development: no Cloudflare, so a header or a `dev_user` cookie (set
-    # it in the browser console: document.cookie = "dev_user=bob@example.com;
-    # path=/") plays a second person; otherwise the configured dev user.
-    return headers.get(EMAIL_HEADER) or request.cookies.get("dev_user") or config.DEV_USER_EMAIL
+    """The verified email of whoever is asking (see shared_python/auth.py)."""
+    return cloudflare_access.request_email(request, config.DEV_USER_EMAIL)
 
 
 def current_user(request: Request, db: Session = Depends(get_db)) -> models.User:

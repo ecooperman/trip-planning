@@ -40,15 +40,10 @@ PLANS_API_BASE = os.environ.get("PLANS_API_BASE", "http://127.0.0.1:8020")
 PLANS_PUBLIC_URL = "https://plans.evancooperman.com" if ENV == "production" else "http://127.0.0.1:8020"
 
 # --- who is signed in (see app/auth.py) -------------------------------------
-# There is no login form: Cloudflare Access authenticates everyone before a
-# request reaches the app and attaches a signed token saying who it was. In
-# production the app verifies that token and REFUSES every request unless both
-# values below are set (from Zero Trust -> Access -> Applications -> (the app)
-# -> Overview; several tags may be comma-separated). They live in the shared
-# secrets file every app reads (/etc/personal-apps/shared.env, see
-# DEPLOYMENT.md), never in this repo.
-CF_TEAM_DOMAIN = os.environ.get("CF_TEAM_DOMAIN")  # e.g. "yourteam.cloudflareaccess.com"
-CF_ACCESS_AUD = os.environ.get("CF_ACCESS_AUD")
+# Cloudflare Access authenticates everyone before a request reaches the app, and
+# shared_python.auth verifies the signed token it attaches. CF_TEAM_DOMAIN and
+# CF_ACCESS_AUD come from the shared secrets file (see shared_python/settings.py
+# and DEPLOYMENT.md), not from here.
 
 # Locally there's no Cloudflare in front, so requests are treated as coming
 # from this address; a Cf-Access-Authenticated-User-Email header or a
@@ -92,30 +87,10 @@ def _int_env(name: str, default: int) -> int:
 # request counts unless the person cancels it while it's still waiting.
 INVITES_PER_USER = _int_env("INVITES_PER_USER", 5)
 
-# The Cloudflare API token needs only "Access: Organizations, Identity
-# Providers, and Groups Write". The group is the one the shared-apps Access
-# policy allows (the "Invitees" group). Without these, approving a request
-# works locally (the Cloudflare step is skipped) but is refused in production.
-CF_API_TOKEN = os.environ.get("CF_API_TOKEN")
-CF_ACCOUNT_ID = os.environ.get("CF_ACCOUNT_ID")
-CF_INVITEES_GROUP_ID = os.environ.get("CF_INVITEES_GROUP_ID")
-# Cloudflare's free Access plan allows 50 people; approving past this is refused.
-ACCESS_SEAT_CAP = _int_env("ACCESS_SEAT_CAP", 50)
-
-# --- telling the administrator a request is waiting (see app/notify.py) -----
-# Each channel is on when its settings are present; use any combination.
+# --- links in what we send (see app/notify.py) ------------------------------
+# The Cloudflare group, ntfy/Pushover and email settings are shared by every app
+# (shared_python/settings.py); only where this app lives is its own.
 PUBLIC_URL = "https://trips.evancooperman.com" if ENV == "production" else f"http://127.0.0.1:{PORT}"
-NTFY_TOPIC = os.environ.get("NTFY_TOPIC")  # anyone who knows the topic can read it: make it long and random
-NTFY_SERVER = os.environ.get("NTFY_SERVER", "https://ntfy.sh").rstrip("/")
-NTFY_TOKEN = os.environ.get("NTFY_TOKEN")  # only for a protected topic
-PUSHOVER_APP_TOKEN = os.environ.get("PUSHOVER_APP_TOKEN")
-PUSHOVER_USER_KEY = os.environ.get("PUSHOVER_USER_KEY")
-SMTP_HOST = os.environ.get("SMTP_HOST")
-SMTP_PORT = _int_env("SMTP_PORT", 587)  # 465 = SSL from the start, anything else = STARTTLS
-SMTP_USERNAME = os.environ.get("SMTP_USERNAME")
-SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD")
-SMTP_FROM = os.environ.get("SMTP_FROM")
-NOTIFY_EMAIL = os.environ.get("NOTIFY_EMAIL")  # where the email goes
 
 # --- people's own API keys (see app/apikeys.py) -----------------------------
 # Anthropic, Google Maps and Jina keys the person saves on their Profile page
