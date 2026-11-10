@@ -13,7 +13,7 @@ function statusLine(k) {
     const when = k.added_at ? ` (added ${new Date(`${k.added_at}Z`).toLocaleDateString()})` : "";
     return { text: `Using your key ending ${k.last4}${when}.`, warn: false };
   }
-  if (k.using_house_key) return { text: "Using the server's own key, because you're the administrator.", warn: false };
+  if (k.using_house_key) return { text: "Using the server's own key, because you're the administrator. Usage is billed to the server's account.", warn: false, house: true };
   return { text: `Not set - ${k.feature.toLowerCase()} is turned off for you.`, warn: false };
 }
 
@@ -79,7 +79,7 @@ function keyCard(k, canSave) {
   return Global.el("div", { class: "key-card" }, [
     Global.el("div", { class: "key-card-head" }, heading),
     Global.el("p", { class: "field-hint", text: k.description }),
-    Global.el("p", { class: "key-status" + (status.warn ? " warn" : (k.usable ? " ok" : "")), text: status.text }),
+    Global.el("p", { class: "key-status" + (status.warn ? " warn" : status.house ? " house" : (k.usable ? " ok" : "")), text: status.text }),
     canSave
       ? Global.el("div", { class: "key-form" }, [input, ...actions])
       : Global.el("p", { class: "field-hint", text: "Saving keys isn't set up on the server yet - ask the administrator." }),
@@ -95,7 +95,18 @@ async function load() {
     keysEl.replaceChildren(Global.el("p", { class: "field-hint", text: err.message }));
     return;
   }
-  keysEl.replaceChildren(...data.keys.map((k) => keyCard(k, data.can_save)));
+  const cards = data.keys.map((k) => keyCard(k, data.can_save));
+  // An administrator can be running on the server's keys without noticing: say so up top.
+  const onHouse = data.keys.filter((k) => k.using_house_key).map((k) => k.label);
+  if (onHouse.length) {
+    cards.unshift(
+      Global.el("div", {
+        class: "key-banner",
+        text: `You're the administrator, so ${onHouse.join(", ")} ${onHouse.length === 1 ? "is" : "are"} running on the server's own key. Add your own key below to use your account instead.`,
+      })
+    );
+  }
+  keysEl.replaceChildren(...cards);
 }
 
 Global.currentUser().then((me) => {
