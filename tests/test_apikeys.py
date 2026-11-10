@@ -5,6 +5,8 @@ import logging
 
 import pytest
 
+from shared_python import settings as shared_settings
+
 from app import apikeys, config, distance, models, stay_extraction
 from app.routers import stay_compare
 from tests.test_access import make_activity, make_stay, make_trip, share
@@ -105,17 +107,10 @@ def test_without_an_encryption_secret_production_refuses_to_save(alice, accepted
     assert alice.get("/api/profile/api-keys").json()["can_save"] is False
 
 
-def test_the_encryption_needs_its_secret_in_production(monkeypatch):
-    monkeypatch.setattr(config, "KEY_ENCRYPTION_SECRET", None)
-    monkeypatch.setattr(config, "ENV", "production")
-    with pytest.raises(apikeys.KeyStorageNotConfigured):
-        apikeys._fernet()
-
-
 def test_a_key_saved_under_another_secret_is_unreadable_not_leaked(alice, accepted, monkeypatch, caplog, db):
-    monkeypatch.setattr(config, "KEY_ENCRYPTION_SECRET", "the-original-secret-long-enough")
+    monkeypatch.setattr(shared_settings, "KEY_ENCRYPTION_SECRET", "the-original-secret-long-enough")
     save(alice, "anthropic", ALICE_KEY)
-    monkeypatch.setattr(config, "KEY_ENCRYPTION_SECRET", "a-different-secret-entirely-now")
+    monkeypatch.setattr(shared_settings, "KEY_ENCRYPTION_SECRET", "a-different-secret-entirely-now")
     user = db.query(models.User).filter_by(email=alice.email).one()
     with caplog.at_level(logging.WARNING):
         assert apikeys.resolve(db, user, "anthropic") is None

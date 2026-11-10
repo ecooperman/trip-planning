@@ -10,21 +10,18 @@ key. Which key a call uses:
    an administrator. Anyone else without a key of their own just doesn't have
    that feature, and is told how to turn it on (see require()).
 
-Saved keys are encrypted (Fernet) with KEY_ENCRYPTION_SECRET, never sent back to
-the browser (only the last four characters are kept in the clear), and never
-logged. Honest limits: this protects a copy of the database file (a backup, a
-download for inspection); it can't protect against someone who has taken over
-the running server, which holds the secret too.
+Saved keys are encrypted with KEY_ENCRYPTION_SECRET, never sent back to the
+browser (only the last four characters are kept in the clear), and never logged
+- see shared_python/keystore.py, which does the encrypting and its limits.
 """
-import base64
-import hashlib
 import logging
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional, Tuple
 
 import requests
-from cryptography.fernet import Fernet, InvalidToken
 from fastapi import HTTPException
+from shared_python import keystore
+from shared_python.keystore import KeyStorageNotConfigured, clean, scrub, storage_available  # noqa: F401 (the routes use these)
 from sqlalchemy.orm import Session
 
 from . import config, models
@@ -32,11 +29,6 @@ from . import config, models
 log = logging.getLogger(__name__)
 
 TIMEOUT = 10
-MIN_LENGTH = 16
-MAX_LENGTH = 400
-
-# Used only when no secret is set and we're not in production.
-_DEV_SECRET = "local-development-only-not-a-secret"
 
 
 @dataclass(frozen=True)
@@ -93,45 +85,18 @@ PROVIDERS: Dict[str, Provider] = {
 }
 
 
-class KeyStorageNotConfigured(Exception):
-    pass
-
-
-# --- encryption --------------------------------------------------------------
-
-
-def storage_available() -> bool:
-    return bool(config.KEY_ENCRYPTION_SECRET) or config.ENV != "production"
-
-
-def _fernet() -> Fernet:
-    secret = config.KEY_ENCRYPTION_SECRET
-    if not secret:
-        if config.ENV == "production":
-            raise KeyStorageNotConfigured()
-        secret = _DEV_SECRET
-    return Fernet(base64.urlsafe_b64encode(hashlib.sha256(secret.encode()).digest()))
-
-
-def clean(raw: str) -> str:
-    key = (raw or "").strip()
-    if not (MIN_LENGTH <= len(key) <= MAX_LENGTH) or any(c.isspace() or ord(c) < 33 for c in key):
-        raise ValueError("That doesn't look like an API key - paste the whole key, with no spaces")
-    return key
-
-
 # --- saving, reading, removing -----------------------------------------------
 
 
 def save(db: Session, user: models.User, provider: str, raw_key: str) -> models.UserApiKey:
     key = clean(raw_key)
-    token = _fernet().encrypt(key.encode()).decode()
+    token = keystore.encrypt(key)
     row = db.query(models.UserApiKey).filter_by(user_id=user.id, provider=provider).first()
     if row is None:
-        row = models.UserApiKey(user_id=user.id, provider=provider, encrypted_key=token, last4=key[-4:])
+        row = models.UserApiKey(user_id=user.id, provider=provider, encrypted_key=token, last4=keystore.last4(key))
         db.add(row)
     else:
-        row.encrypted_key, row.last4 = token, key[-4:]
+        row.encrypted_key, row.last4 = token, keystore.last4(key)
     db.commit()
     db.refresh(row)
     return row
@@ -152,12 +117,8 @@ def _row(db: Session, user: models.User, provider: str) -> Optional[models.UserA
 
 def _decrypt(row: models.UserApiKey) -> Optional[str]:
     """The saved key, or None if it can't be read (the secret changed, or the
-    server has none). Logged without anything from the key."""
-    try:
-        return _fernet().decrypt(row.encrypted_key.encode()).decode()
-    except (InvalidToken, KeyStorageNotConfigured):
-        log.warning("A saved %s key could not be decrypted (was KEY_ENCRYPTION_SECRET changed?)", row.provider)
-        return None
+    server has none)."""
+    return keystore.decrypt(row.encrypted_key, row.provider)
 
 
 def can_use_house_key(user: models.User) -> bool:
@@ -230,10 +191,6 @@ def status(db: Session, user: models.User) -> List[dict]:
 # case the key is saved anyway and the person is told it wasn't verified.
 
 
-def _scrub(text: str, key: str) -> str:
-    return " ".join((text or "").replace(key, "...").split())[:200]
-
-
 def _verify_anthropic(key: str) -> Tuple[Optional[bool], str]:
     r = requests.get(
         "https://api.anthropic.com/v1/models",
@@ -259,7 +216,7 @@ def _verify_google(key: str) -> Tuple[Optional[bool], str]:
     if result == "OK":
         return True, ""
     if result in ("REQUEST_DENIED", "INVALID_REQUEST"):
-        return False, "Google refused that key: " + _scrub(data.get("error_message") or result, key)
+        return False, "Google refused that key: " + scrub(data.get("error_message") or result, key)
     if result == "OVER_QUERY_LIMIT":
         return True, ""  # a real key that is simply out of quota right now
     return None, f"Google answered with an unexpected status ({result or r.status_code})"

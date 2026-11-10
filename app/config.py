@@ -93,14 +93,7 @@ INVITES_PER_USER = _int_env("INVITES_PER_USER", 5)
 PUBLIC_URL = "https://trips.evancooperman.com" if ENV == "production" else f"http://127.0.0.1:{PORT}"
 
 # --- people's own API keys (see app/apikeys.py) -----------------------------
-# Anthropic, Google Maps and Jina keys the person saves on their Profile page
-# are stored encrypted with this secret, so a copy of the database file (a
-# backup, a download for inspection) holds nothing usable. Any long random
-# string will do; generate one with:
-#   python3 -c "import secrets; print(secrets.token_urlsafe(48))"
-# Put it in the shared secrets file (/etc/personal-apps/shared.env) and never
-# change it afterwards - saved keys can't be read back with a different one, and
-# people would have to enter theirs again. Without it, production refuses to
-# save keys (locally a fixed development secret is used).
-KEY_ENCRYPTION_SECRET = os.environ.get("KEY_ENCRYPTION_SECRET")
-
+# Keys the person saves on their Profile page are encrypted with
+# KEY_ENCRYPTION_SECRET, which lives in the shared secrets file with the other
+# shared settings (shared_python/settings.py, DEPLOYMENT.md) - never change it once
+# keys are saved.
