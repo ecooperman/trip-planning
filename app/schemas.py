@@ -238,10 +238,29 @@ class Invite(BaseModel):
     created_at: datetime
 
 
+class AppInviteCreate(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+
+
+class AppInvite(BaseModel):
+    """A request to let someone into the app itself, as its asker sees it."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    email: str
+    status: Literal["pending", "approved", "declined"]
+    created_at: datetime
+
+
 class AdminInvite(Invite):
     """The same request as the administrator sees it, with who and what for."""
 
     invited_by_email: str
+    # True when it is to the app itself rather than to one trip.
+    for_app: bool = False
+    # When it was decided (set for declined requests).
+    decided_at: Optional[datetime] = None
     trip_name: Optional[str] = None
 
 

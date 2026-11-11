@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, Enum, Float, ForeignKey, Integer, LargeBinary, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, Enum, Float, ForeignKey, Index, Integer, LargeBinary, String, Text, UniqueConstraint, text
 from sqlalchemy.orm import relationship
 
 from .database import Base
@@ -109,7 +109,13 @@ class Invite(Base):
     (trip_id goes NULL) so they keep counting against the inviter's allowance."""
 
     __tablename__ = "invites"
-    __table_args__ = (UniqueConstraint("trip_id", "email", name="uq_invites_trip_id_email"),)
+    __table_args__ = (
+        UniqueConstraint("trip_id", "email", name="uq_invites_trip_id_email"),
+        # An invite to the app itself has no trip, and NULLs never collide in the constraint
+        # above - so one per email is enforced here (approved invites whose trip was deleted
+        # also have no trip, but they are not app invites, so they don't count).
+        Index("uq_invites_app_email", "email", unique=True, sqlite_where=text("for_app = 1"), postgresql_where=text("for_app")),
+    )
 
     id = Column(Integer, primary_key=True)
     trip_id = Column(Integer, ForeignKey("trips.id"), nullable=True)
@@ -119,6 +125,9 @@ class Invite(Base):
     status = Column(String, nullable=False, default=INVITE_PENDING)
     created_at = Column(DateTime, default=datetime.utcnow)
     decided_at = Column(DateTime, nullable=True)
+    # True for an invite to the app itself rather than to one trip: approving it only
+    # lets the person in (no trip to put them on). `role` is a placeholder then.
+    for_app = Column(Boolean, nullable=False, default=False, server_default=text("0"))
 
     trip = relationship("Trip", back_populates="invites")
     invited_by = relationship("User")

@@ -98,6 +98,12 @@ them. `GET /api/me` says who you are (and whether you're the administrator).
   the queue are per app (this app's `invites` table), so an approval here doesn't
   use up lists invites - but anyone approved in either app is in the one shared
   Cloudflare group, so can then be added directly to trips in both.
+- **Inviting someone to the app itself** (no trip shared): the Invites page is for everyone, with the shared-assets
+  `app-invites.js` panel (`GET/POST /api/app-invites`, `DELETE /api/app-invites/{id}`). Same allowance, approval and Cloudflare
+  step as a trip invite; approving only lets the person in with an empty account and emails them how to sign in. Stored as an
+  `invites` row with `for_app` set and no trip; one per email. The administrator also sees every **declined** request (to the app or to one trip) on the Invites page, with **Allow again**
+  (`GET /api/admin/invites/declined`, `POST /api/admin/invites/{id}/reinstate`): it removes the declined request so anyone may ask for
+  that person again, and the original asker gets that invite back.
 - **What sharing shares.** A trip's activities belong to the *trip owner's*
   library, even ones an editor adds: an activity on a trip is always its
   owner's, so an editor's activity can't be moved onto the owner's trip (or the

@@ -92,6 +92,7 @@ async def no_cache(request: Request, call_next):
 
 app.include_router(me.router)
 app.include_router(invites.router)
+app.include_router(invites.app_router)
 app.include_router(profile.router)
 app.include_router(trips.router)
 app.include_router(activities.router)

@@ -25,21 +25,27 @@ Global.buildNav([
   { icon: "refresh", label: "Refresh", onclick: () => location.reload() },
 ]);
 
-// The administrator also gets the Invites page, with how many requests are
-// waiting for them (the badge is kept current by invites.js).
+// Everyone gets the Invites page (to ask for someone to be let in); the administrator
+// also sees how many requests are waiting for them (the badge is kept current by
+// invites.js).
 Global.currentUser().then((me) => {
   const nav = document.querySelector(".app-nav");
-  if (!me || !me.is_admin || !nav) return;
-  const waiting = me.pending_invites || 0;
-  const count = Global.el("span", {
-    id: "nav-invite-count",
-    class: "item-badge item-badge-accent nav-count" + (waiting ? "" : " hidden"),
-    text: String(waiting),
-  });
+  if (!me || !nav) return;
+  const waiting = me.is_admin ? me.pending_invites || 0 : 0;
+  const content = [Global.el("span", { class: "app-nav-icon", "data-icon": "settings", "aria-hidden": "true" }), "Invites"];
+  if (me.is_admin) {
+    content.push(
+      Global.el("span", {
+        id: "nav-invite-count",
+        class: "item-badge item-badge-accent nav-count" + (waiting ? "" : " hidden"),
+        text: String(waiting),
+      })
+    );
+  }
   const link = Global.el(
     "a",
     { href: "/invites.html", class: "app-nav-link" + (location.pathname === "/invites.html" ? " active" : "") },
-    [Global.el("span", { class: "app-nav-icon", "data-icon": "settings", "aria-hidden": "true" }), "Invites", count]
+    content
   );
   nav.insertBefore(link, nav.lastElementChild); // ahead of Refresh, which stays last
   applyIcons(link);

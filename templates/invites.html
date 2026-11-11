@@ -17,13 +17,27 @@
   <main>
     <div id="page-message" class="page-message hidden"></div>
 
-    <p class="subtitle">People a trip's owner has asked to have let in. Approving adds their email to the allowed group in Cloudflare and puts them on the trip.</p>
+    <section class="section">
+      <h2>Invite someone</h2>
+      <div id="app-invites"></div>
+    </section>
 
-    <div id="invite-requests" class="request-list"></div>
+    <section id="admin-section" class="section hidden">
+      <h2>Waiting for approval</h2>
+      <p class="field-hint">People someone has asked to have let in. Approving adds their email to the allowed group in Cloudflare and gives them an account; if the request was for a trip, they are put on it too.</p>
+      <div id="invite-requests" class="request-list"></div>
+
+      <div id="declined-section" class="hidden">
+        <h3 class="section-subhead">Declined</h3>
+        <p class="field-hint">Nobody can ask for these people again unless you allow it.</p>
+        <div id="declined-requests" class="request-list"></div>
+      </div>
+    </section>
   </main>
 
   <script src="{{ shared_assets_base }}/theme.js"></script>
   <script src="{{ shared_assets_base }}/icons.js"></script>
+  <script src="{{ shared_assets_base }}/app-invites.js"></script>
   <script src="/nav.js"></script>
   <script src="/invites.js"></script>
 </body>
