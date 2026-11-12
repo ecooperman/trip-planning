@@ -76,11 +76,17 @@ def _nothing_leaves_the_machine(monkeypatch):
 
 
 class Person:
-    """A client that makes every request as one email."""
+    """A client that makes every request as one email. By default the person has
+    been enabled in the app (an administrator let them in); pass enabled=False
+    for someone who has merely passed Cloudflare's login gate and has no
+    account here."""
 
-    def __init__(self, client: TestClient, email: str):
+    def __init__(self, client: TestClient, email: str, enabled: bool = True):
         self.client, self.email = client, email
         self.headers = {"Cf-Access-Authenticated-User-Email": email}
+        if enabled and email != config.DEV_USER_EMAIL:
+            with SessionLocal() as session:
+                crud.enable_user(session, crud.normalize_email(email))
 
     def _call(self, method, url, **kwargs):
         return getattr(self.client, method)(url, headers=self.headers, **kwargs)
@@ -137,4 +143,4 @@ def admin(client):
 @pytest.fixture()
 def sign_in(client):
     """Make a person from any email: sign_in("dana@example.com")."""
-    return lambda email: Person(client, email)
+    return lambda email, enabled=True: Person(client, email, enabled)

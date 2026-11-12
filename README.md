@@ -62,8 +62,31 @@ others on that trip
 
 There is no sign-in form. Cloudflare Access authenticates everyone before a
 request reaches the app and tells it who it was, so the app just reads that
-email (`app/auth.py`) and creates the person's account the first time it sees
-them. `GET /api/me` says who you are (and whether you're the administrator).
+email (`app/auth.py`). Passing the gate is not enough to use the app, though:
+Cloudflare's allowed group is shared with the other apps, so each app decides
+for itself who is **enabled**. A person has a row in `users` with `status`
+`active` (enabled) or `removed`; anyone with no row, or a removed one, gets a 403
+explaining that (and the HTML pages show a plain "no access" page with a Log out
+link instead of an empty app). Accounts are only created by the administrator's
+decision: approving an invite, or adding the person on the Users page. The
+administrators in `ADMIN_EMAILS` always get one on first sight (and, before
+`ADMIN_EMAILS` is set in production, the first person in does, taking over the
+pre-accounts data); so does the service user that other apps call in as. `GET
+/api/me` says who you are (and whether you're the administrator).
+
+- **Users page** (`/users.html`, administrator only; `GET/POST /api/admin/users`,
+  `POST .../{id}/revoke`, `POST .../{id}/restore`, `DELETE .../{id}`): everyone with
+  an account and what they own. *Add someone* lets them through the Cloudflare gate,
+  gives them an account and emails them (adding a removed person restores them).
+  *Remove access* sets `removed` here only - it never touches Cloudflare, because
+  another app may still want them - and deletes nothing, so *Restore* puts it all
+  back. *Delete account data* is a separate step, offered only for someone already
+  removed: it erases the trips they own (for everyone they were shared with, with
+  their activities, stays and the rest), their other activities, places and
+  categories, saved API keys, their place on other people's trips and the requests
+  they made, behind a confirmation that spells out the counts. The email row stays,
+  removed, so signing in again can't hand them a fresh account. Administrators can't
+  be removed or deleted.
 
 - **Everything is yours unless shared.** Trips, activities, places and
   categories each belong to the person who created them; a stranger's ids are a
@@ -72,12 +95,12 @@ them. `GET /api/me` says who you are (and whether you're the administrator).
   card on the trips list, which also shows a "people" or "View only" badge - or `GET/POST
   /api/trips/{id}/members`, `PATCH/DELETE .../members/{user_id}`): by email, as
   `edit` or `view`. The page's panel is `access.js` from shared-assets, the same
-  one the lists app uses. Only someone who can sign in *right now* can be added:
-  Cloudflare is asked (read-only) whether the email is an administrator or in the
-  Invitees group - not whether the app has an account for it, so someone removed
-  from the group can't be re-added without a new request. Anyone else is a 404
-  ("That person can't sign in yet"), which the page turns into an offer to
-  **request an invite**.
+  one the lists app uses. Only someone who can use the app *right now* can be added:
+  they need an active account here, and Cloudflare is asked (read-only) that they
+  are still in the Invitees group (or an administrator). Being in the group for
+  another app isn't enough. Anyone else is a 404 ("That person can't sign in
+  yet"), which the page turns into an offer to **request an invite**; someone the
+  administrator removed is a 409 saying only the administrator can restore them.
   - **owner** (creator, exactly one): everything, plus sharing, archiving and
     deleting the trip. Anyone else can leave a trip shared with them.
   - **edit**: works with the trip's content - its activities, stays, travel,

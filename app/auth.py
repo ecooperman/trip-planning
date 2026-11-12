@@ -3,8 +3,8 @@
 There are no passwords or sign-up forms: every request has already been
 through Cloudflare Access, which attaches the signed-in person's email.
 shared_python.auth verifies it (and refuses everything in production if that
-isn't configured); here it becomes this app's own User row, created the first
-time we see them. Other apps on this machine (finances, social-planning) have no
+isn't configured); here it becomes this app's own User row - which exists only if the
+administrator enabled that person in this app. Other apps on this machine (finances, social-planning) have no
 signed-in person and call in with a shared X-Service-Token instead.
 """
 import hmac
@@ -27,11 +27,27 @@ def request_email(request: Request) -> str:
     return cloudflare_access.request_email(request, config.DEV_USER_EMAIL)
 
 
-def current_user(request: Request, db: Session = Depends(get_db)) -> models.User:
+NO_ACCESS = {
+    "none": "You haven't been given access to Trips. Ask the person who told you about it, or the administrator, to invite you.",
+    "removed": "Your access to Trips has been removed. Ask the administrator if you think that's a mistake.",
+}
+
+
+def signed_in_email(request: Request) -> str:
+    """The signed-in person's normalized email (401 if there isn't one)."""
     email = crud.normalize_email(request_email(request))
     if "@" not in email:
         raise HTTPException(status_code=401, detail="Not signed in")
-    return crud.get_or_create_user(db, email)
+    return email
+
+
+def current_user(request: Request, db: Session = Depends(get_db)) -> models.User:
+    """Whoever is asking, who must also have been enabled in this app: getting
+    through Cloudflare's login gate (shared with other apps) is not enough."""
+    user, problem = crud.user_for_request(db, signed_in_email(request))
+    if user is None:
+        raise HTTPException(status_code=403, detail=NO_ACCESS[problem])
+    return user
 
 
 def is_admin(user: models.User) -> bool:
@@ -50,7 +66,10 @@ def _service_user(db: Session) -> models.User:
     email = config.SERVICE_USER_EMAIL or (sorted(config.ADMIN_EMAILS)[0] if config.ADMIN_EMAILS else None)
     if not email:
         raise HTTPException(status_code=503, detail="No service user is configured (set ADMIN_EMAILS)")
-    return crud.get_or_create_user(db, email)
+    user = crud.service_user(db, email)
+    if user is None:
+        raise HTTPException(status_code=403, detail="The service user's access has been removed")
+    return user
 
 
 def user_or_service(request: Request, db: Session = Depends(get_db)) -> models.User:

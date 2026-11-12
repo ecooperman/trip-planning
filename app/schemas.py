@@ -61,6 +61,30 @@ class RatingValidator(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class AdminUser(BaseModel):
+    """One person with an account, as the administrator sees them on the Users
+    page, with what they own (so deleting them can be confirmed knowingly)."""
+
+    id: int
+    email: str
+    status: Literal["active", "removed"]
+    is_admin: bool
+    created_at: Optional[datetime] = None
+    owned_trips: int = 0
+    # Trips someone else owns that this person is on.
+    shared_with_them: int = 0
+    # Other people who are on the trips this person owns (deleting those trips removes them for them too).
+    people_on_their_trips: int = 0
+    # Everything of theirs, trip or not: activities, places and categories.
+    activities: int = 0
+    places: int = 0
+    categories: int = 0
+
+
+class UserAdd(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+
+
 class CategoryBase(BaseModel):
     name: str
     color: str

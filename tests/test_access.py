@@ -427,12 +427,14 @@ def test_a_wrong_or_unconfigured_service_token_is_refused(service, client, monke
     assert client.get("/api/trips", headers=service).status_code == 401  # the feature is off
 
 
-def test_the_service_token_opens_only_the_endpoints_meant_for_it(service, client):
+def test_the_service_token_opens_only_the_endpoints_meant_for_it(service, client, db):
+    from app import crud
+
+    crud.enable_user(db, config.DEV_USER_EMAIL)  # the local dev user, who the request falls through to
     for path in ("/api/places", "/api/categories", "/api/activities", "/api/me"):
         resp = client.get(path, headers=service)
         # falls through to normal sign-in (here the local dev user), never to the administrator's data by token
         assert resp.status_code == 200
-    from app import crud  # noqa: F401  (the service user is created on first use, like anyone)
 
 
 # --- accounts ------------------------------------------------------------------

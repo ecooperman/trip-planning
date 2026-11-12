@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>No access - Trips</title>
+  <link rel="stylesheet" href="{{ shared_assets_base }}/theme.css" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="app-header">
+    <h1>Trips</h1>
+  </header>
+
+  <main>
+    <section class="section">
+      <h2>{{ heading }}</h2>
+      <p>{{ message }}</p>
+      <p class="field-hint">Signed in as {{ email }}. If that's the wrong address, log out and sign in with the right one.</p>
+      <p><a class="secondary-btn" href="/cdn-cgi/access/logout">Log out</a></p>
+    </section>
+  </main>
+</body>
+</html>

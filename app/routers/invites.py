@@ -8,7 +8,7 @@ from shared_python import cloudflare
 from .. import config, crud, models, notify, schemas
 from ..auth import current_user, is_admin, require_admin
 from ..deps import get_db
-from ..signin import can_sign_in, valid_email
+from ..signin import can_sign_in, refuse_if_removed, valid_email
 
 # The administrator's side of inviting people: the requests waiting for a
 # decision, and approving or declining them. (Asking is on a trip's own routes,
@@ -18,19 +18,25 @@ router = APIRouter(prefix="/api/admin/invites", tags=["invites"])
 app_router = APIRouter(prefix="/api/app-invites", tags=["invites"])
 
 
-def approve(db: Session, invite: models.Invite, background: BackgroundTasks) -> models.Invite:
-    """Let the person through Cloudflare's login gate, then put them on the
-    trip, then tell them by email. The Cloudflare step goes first: if it fails
-    the request stays waiting, so nobody is recorded as let in who still can't
-    sign in."""
+def let_through_gate(email: str) -> None:
+    """Add the email to Cloudflare's allowed group (so they can reach the app
+    at all), turning each way that can fail into an error the administrator sees."""
     try:
-        cloudflare.allow_email(invite.email)
+        cloudflare.allow_email(email)
     except cloudflare.NotConfigured as exc:
         raise HTTPException(status_code=503, detail=str(exc))
     except cloudflare.SeatCapReached as exc:
         raise HTTPException(status_code=409, detail=str(exc))
     except cloudflare.CloudflareError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
+
+
+def approve(db: Session, invite: models.Invite, background: BackgroundTasks) -> models.Invite:
+    """Let the person through Cloudflare's login gate, then put them on the
+    trip, then tell them by email. The Cloudflare step goes first: if it fails
+    the request stays waiting, so nobody is recorded as let in who still can't
+    sign in."""
+    let_through_gate(invite.email)
     granted = crud.grant_invite(db, invite)
     if granted.for_app:
         # Nothing was shared: they are simply let in, and told how to sign in.
@@ -125,6 +131,7 @@ def ask_app_invite(
     approved straight away. Counts against the same allowance as the invites
     to a trip."""
     email = valid_email(body.email)
+    refuse_if_removed(db, email)
     if can_sign_in(db, email):
         raise HTTPException(status_code=409, detail=f"{email} can already sign in, so there's nothing to request.")
     invite, problem = crud.create_invite(db, None, user, email, "view", for_app=True)

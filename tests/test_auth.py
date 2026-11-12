@@ -37,7 +37,7 @@ def test_locally_with_no_header_you_are_the_dev_user(client):
     assert client.get("/api/me").json()["email"] == config.DEV_USER_EMAIL
 
 
-def test_a_valid_token_identifies_the_person(client, production, keypair):
+def test_a_valid_token_identifies_the_person(client, production, keypair, alice):
     resp = client.get("/api/me", headers={"Cf-Access-Jwt-Assertion": token(keypair[0], "Alice@Example.com")})
     assert resp.status_code == 200 and resp.json()["email"] == "alice@example.com"
 

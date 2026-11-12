@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session, joinedload
 from . import config, models, schemas
 
 # Parked owner of everything that existed before accounts did (see the
-# migration); the first person to sign in takes it over (get_or_create_user).
+# migration); the first person to sign in takes it over (user_for_request).
 LEGACY_OWNER_EMAIL = "legacy-owner@trips.invalid"
 
 # ---------------------------------------------------------------------------
@@ -37,21 +37,39 @@ def _create_user(db: Session, email: str) -> models.User:
     return user
 
 
-def get_or_create_user(db: Session, email: str) -> models.User:
-    """The person behind an (already normalized) email, created on first
-    sight. The first one in who's allowed to takes over the pre-accounts data
-    by renaming the placeholder owner to their email - so it all becomes
-    theirs without moving a single row."""
+def user_for_request(db: Session, email: str):
+    """The account behind an (already normalized) email that has passed the
+    login gate, as (user, None), or (None, problem) with problem "none" (never
+    enabled in this app) or "removed". Nobody gets an account just by turning
+    up: only an administrator's email does, plus - before anyone has set
+    ADMIN_EMAILS in production - the first person in, who takes over the
+    pre-accounts data by having the placeholder owner renamed to their email,
+    so it all becomes theirs without moving a single row. Everyone else was
+    given an account by an approved invite or the Users page."""
     user = get_user_by_email(db, email)
+    is_admin_email = email in config.ADMIN_EMAILS
     if user is not None:
-        return user
-    if config.ADOPT_LEGACY_ANY or email in config.ADMIN_EMAILS:
-        legacy = get_user_by_email(db, LEGACY_OWNER_EMAIL)
-        if legacy is not None:
-            legacy.email = email
-            db.commit()
-            return legacy
-    return _create_user(db, email)
+        if user.status == models.USER_REMOVED and not is_admin_email:
+            return None, "removed"
+        return user, None
+    legacy = get_user_by_email(db, LEGACY_OWNER_EMAIL) if (config.ADOPT_LEGACY_ANY or is_admin_email) else None
+    if legacy is not None:
+        legacy.email = email
+        db.commit()
+        return legacy, None
+    if is_admin_email:
+        return _create_user(db, email), None
+    return None, "none"
+
+
+def service_user(db: Session, email: str):
+    """The account other apps' calls (X-Service-Token) act as. The operator
+    configured this identity, so it is created if it doesn't exist yet; None only
+    if the administrator removed it."""
+    user, problem = user_for_request(db, email)
+    if user is None and problem == "none":
+        return _create_user(db, email)
+    return user
 
 
 # ---------------------------------------------------------------------------
@@ -156,17 +174,23 @@ def get_member(db: Session, trip_id: int, user_id: int):
 
 def get_account(db: Session, email: str):
     """The person with this (already normalized) email if the app has an
-    account for them (they've signed in, or were let in by an approved
-    invite). Not the same as being able to sign in now - see
-    routers/trips.py's _can_sign_in, which also asks Cloudflare."""
+    account for them, active or removed. Not the same as being able to sign in
+    now - see signin.py's can_sign_in, which also looks at the status and asks
+    Cloudflare."""
     if email == LEGACY_OWNER_EMAIL:
         return None
     return get_user_by_email(db, email)
 
 
-def create_account(db: Session, email: str) -> models.User:
-    """An account for someone Cloudflare lets in who hasn't opened this app yet."""
-    return get_account(db, email) or _create_user(db, email)
+def enable_user(db: Session, email: str) -> models.User:
+    """Make sure this email has an active account here: create one, or switch a
+    removed person back on. Only for an administrator's decision (approving an
+    invite, adding or restoring someone on the Users page)."""
+    user = get_account(db, email) or _create_user(db, email)
+    if user.status != models.USER_ACTIVE:
+        user.status = models.USER_ACTIVE
+        db.commit()
+    return user
 
 
 def add_member(db: Session, trip_id: int, user: models.User, role: str):
@@ -336,9 +360,9 @@ def cancel_invite(db: Session, invite: models.Invite) -> None:
 
 
 def grant_invite(db: Session, invite: models.Invite) -> models.Invite:
-    """Record that the invited person was let in: they get an account (picked
-    up when they first sign in) and their place on the trip."""
-    user = create_account(db, invite.email)
+    """Record that the invited person was let in: they get an active account
+    here and their place on the trip."""
+    user = enable_user(db, invite.email)
     if invite.trip_id is not None:
         add_member(db, invite.trip_id, user, invite.role)  # None if they're somehow on it already
     invite.status = models.INVITE_APPROVED
@@ -456,6 +480,80 @@ def delete_category(db: Session, owner_id: int, category_id: int) -> str:
     db.delete(db_category)
     db.commit()
     return "deleted"
+
+
+def get_users_overview(db: Session):
+    """Everyone with an account (the pre-accounts placeholder aside) with what
+    they own, for the administrator's Users page. Counted per person - there
+    are a handful of people, not thousands."""
+    overview = []
+    users = db.query(models.User).filter(models.User.email != LEGACY_OWNER_EMAIL).order_by(models.User.email).all()
+    for user in users:
+        owned_ids = [i for (i,) in db.query(models.Trip.id).filter(models.Trip.owner_id == user.id)]
+        on_trips = db.query(func.count(models.TripMember.trip_id)).filter(models.TripMember.user_id == user.id).scalar()
+        others = 0
+        if owned_ids:
+            others = (
+                db.query(func.count(func.distinct(models.TripMember.user_id)))
+                .filter(models.TripMember.trip_id.in_(owned_ids), models.TripMember.user_id != user.id)
+                .scalar()
+            )
+        overview.append(
+            schemas.AdminUser(
+                id=user.id,
+                email=user.email,
+                status=user.status,
+                is_admin=user.email in config.ADMIN_EMAILS,
+                created_at=user.created_at,
+                owned_trips=len(owned_ids),
+                shared_with_them=on_trips - len(owned_ids),
+                people_on_their_trips=others,
+                activities=db.query(func.count(models.Activity.id)).filter(models.Activity.owner_id == user.id).scalar(),
+                places=db.query(func.count(models.Place.id)).filter(models.Place.owner_id == user.id).scalar(),
+                categories=db.query(func.count(models.Category.id)).filter(models.Category.owner_id == user.id).scalar(),
+            )
+        )
+    return overview
+
+
+def get_user(db: Session, user_id: int):
+    """An account by id, or None (the pre-accounts placeholder isn't one)."""
+    user = db.get(models.User, user_id)
+    return None if user is None or user.email == LEGACY_OWNER_EMAIL else user
+
+
+def set_user_status(db: Session, user: models.User, status: str) -> models.User:
+    user.status = status
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def delete_user_data(db: Session, user: models.User) -> None:
+    """Erase everything this person owns or made, keeping only their (removed)
+    account row so that signing in again can't hand them a fresh one. Their
+    trips go for everyone they were shared with (with their activities, stays
+    and the rest), as do their other activities, places and categories, their
+    saved API keys and the requests they made to have people let in (the people
+    already let in keep their accounts). Their place on other people's trips
+    goes; those trips are untouched."""
+    for trip in db.query(models.Trip).filter(models.Trip.owner_id == user.id).all():
+        for stay in trip.stays:
+            _invalidate_location_distances(db, "stay", stay.id)
+        delete_trip(db, trip.id, delete_activities=True)  # an activity belongs to its trip's owner
+    for activity in db.query(models.Activity).filter(models.Activity.owner_id == user.id).all():
+        delete_activity(db, activity.id)
+    # Nothing outside their own activities can use their places or categories
+    # (see Activity.owner_id), so with those gone these are free to go.
+    for place in db.query(models.Place).filter(models.Place.owner_id == user.id).all():
+        db.delete(place)  # its images and category links go with it
+    for category in db.query(models.Category).filter(models.Category.owner_id == user.id).all():
+        db.delete(category)
+    db.flush()
+    db.query(models.TripMember).filter(models.TripMember.user_id == user.id).delete()
+    db.query(models.UserApiKey).filter(models.UserApiKey.user_id == user.id).delete()
+    db.query(models.Invite).filter(models.Invite.invited_by_id == user.id).delete()
+    db.commit()
 
 
 # ---------------------------------------------------------------------------

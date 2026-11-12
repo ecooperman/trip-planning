@@ -49,16 +49,24 @@ ROLE_VIEW = "view"
 ROLE_RANK = {ROLE_VIEW: 1, ROLE_EDIT: 2, ROLE_OWNER: 3}
 
 
+USER_ACTIVE = "active"
+USER_REMOVED = "removed"
+
+
 class User(Base):
-    """Someone who has signed in (or been invited by email before they
-    have). Created on demand from the email Cloudflare Access vouches for -
-    there is no password or sign-up form (see app/auth.py)."""
+    """Someone the administrator has enabled in this app (by approving an
+    invite or adding them on the Users page) - passing Cloudflare's login gate
+    is not enough, because the gate is shared with other apps. The email comes
+    from what Cloudflare Access vouches for; there is no password or sign-up
+    form (see app/auth.py). A removed person keeps their row (so signing in
+    again can't quietly give them a fresh account) but can't use the app."""
 
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True)
     # Always stored lowercased.
     email = Column(String, unique=True, nullable=False)
+    status = Column(String, nullable=False, default=USER_ACTIVE, server_default=USER_ACTIVE)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 

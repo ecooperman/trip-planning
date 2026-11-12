@@ -114,16 +114,24 @@ def test_an_account_that_cloudflare_wont_let_in_cant_simply_be_added(alice, bob,
     assert alice.post(f"/api/trips/{trip['id']}/members", {"email": bob.email, "role": "view"}).status_code == 200
 
 
-def test_someone_in_the_group_who_never_opened_the_app_is_added_directly(alice, sign_in, let_in, db):
-    let_in.add("dana@example.com")  # e.g. put there by hand, or invited for another app
+def test_someone_through_the_gate_for_another_app_still_has_to_be_invited_here(alice, sign_in, let_in, db, admin, allowed, sent):
+    let_in.add("dana@example.com")  # e.g. invited to Lists: Cloudflare's group is shared by the apps
     trip = make_trip(alice)
-    resp = alice.post(f"/api/trips/{trip['id']}/members", {"email": "Dana@Example.com", "role": "edit"})
-    assert resp.status_code == 200
-    assert db.query(models.User).filter_by(email="dana@example.com").count() == 1
-    assert [(t["location"], t["my_role"]) for t in sign_in("dana@example.com").get("/api/trips").json()] == [("Lisbon", "edit")]
+    body = {"email": "Dana@Example.com", "role": "edit"}
+    assert alice.post(f"/api/trips/{trip['id']}/members", body).status_code == 404  # no account here, so no sharing
+    assert db.query(models.User).filter_by(email="dana@example.com").count() == 0
+    dana = sign_in("dana@example.com", enabled=False)
+    assert dana.get("/api/trips").status_code == 403  # nor can she use the app
+
+    # Asking works, and approving gives her an account and the trip.
+    invite = ask(alice, trip["id"], "Dana@Example.com")
+    assert invite.status_code == 200
+    assert admin.post(f"/api/admin/invites/{invite.json()['id']}/approve").status_code == 200
+    assert [(t["location"], t["my_role"]) for t in dana.get("/api/trips").json()] == [("Lisbon", "edit")]
 
 
-def test_someone_who_can_already_sign_in_is_added_not_invited(alice, let_in):
+def test_someone_who_can_already_sign_in_is_added_not_invited(alice, let_in, sign_in):
+    sign_in("dana@example.com")  # enabled here
     let_in.add("dana@example.com")
     trip = make_trip(alice)
     assert ask(alice, trip["id"], "dana@example.com").status_code == 409
@@ -351,7 +359,7 @@ def test_deleting_a_list_drops_its_waiting_requests_but_not_approved_ones(alice,
     assert ask(alice, other["id"], "d@example.com").status_code == 403
 
 
-def test_refusals_name_the_person_and_say_what_to_do(alice, admin, monkeypatch, allowed, sent, let_in):
+def test_refusals_name_the_person_and_say_what_to_do(alice, admin, monkeypatch, allowed, sent, let_in, sign_in):
     monkeypatch.setattr(config, "INVITES_PER_USER", 2)
     trip = make_trip(alice)
 
@@ -365,6 +373,7 @@ def test_refusals_name_the_person_and_say_what_to_do(alice, admin, monkeypatch, 
     declined = ask(alice, trip["id"], "a@example.com")
     assert "declined" in declined.json()["detail"]
 
+    sign_in("dana@example.com")  # enabled here
     let_in.add("dana@example.com")
     signs_in = ask(alice, trip["id"], "dana@example.com")
     assert "dana@example.com" in signs_in.json()["detail"] and "Add" in signs_in.json()["detail"]
@@ -422,13 +431,6 @@ def test_adding_someone_who_has_signed_in_emails_them_without_the_pin_text(alice
     body = emails[0][2]
     assert "you can view it" in body and f"trip.html?id={trip['id']}" in body
     assert "one-time PIN" not in body
-
-
-def test_adding_someone_let_in_who_never_opened_the_app_explains_signing_in(alice, let_in, emails):
-    let_in.add("dana@example.com")
-    trip = make_trip(alice)
-    assert alice.post(f"/api/trips/{trip['id']}/members", {"email": "dana@example.com", "role": "edit"}).status_code == 200
-    assert "one-time PIN" in emails[0][2] and "\n    dana@example.com\n" in emails[0][2]
 
 
 def test_a_refused_add_sends_no_email(alice, emails):
