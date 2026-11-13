@@ -160,7 +160,7 @@ function buildTripViewPane(card, trip) {
   const role = trip.my_role || "owner";
   if (role === "owner") actions.append(deleteBtn, archiveBtn);
   if (role !== "view") actions.append(Global.el("button", { type: "button", class: "secondary-btn edit-toggle-btn", text: "Edit" }));
-  if (actions.children.length) pane.appendChild(actions);
+  if (actions.children.length) pane.appendChild(tidyActions(actions));
   return pane;
 }
 

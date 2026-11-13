@@ -13,6 +13,17 @@
      app-wide knob, deliberately not a per-category DB field - one number
      to eyeball rather than a setting to manage per category. */
   --cat-bg-mix: 65%;
+
+  /* Trip-specific colours, as tokens so dark mode can have its own. */
+  --info: #375a99; /* a trip's blue: the compass icon, trip links and badges */
+  --info-bg: #eaf0fb;
+  --rating: #b8860b; /* stars */
+}
+
+:root[data-theme="dark"] {
+  --info: #8fb0ee;
+  --info-bg: rgba(143, 176, 238, 0.14);
+  --rating: #e0b04a;
 }
 
 /* --- accordion cards: trip-specific indicator/badge colors (the base
@@ -44,7 +55,7 @@
 }
 
 .item-summary-indicator[data-icon="compass"] {
-  color: #375a99;
+  color: var(--info);
 }
 
 /* Same colors as the plain indicators above, applied to the clickable
@@ -58,7 +69,7 @@
 }
 
 .activity-summary-trip-link {
-  color: #375a99;
+  color: var(--info);
 }
 
 .activity-summary-trip-link:hover {
@@ -84,8 +95,8 @@
 }
 
 .item-badge-trip {
-  color: #375a99;
-  background: #eaf0fb;
+  color: var(--info);
+  background: var(--info-bg);
 }
 
 /* Same color as the shared .item-badge-accent - kept as its own class
@@ -118,7 +129,7 @@
   flex-shrink: 0;
   font-size: 13px;
   letter-spacing: 1px;
-  color: #b8860b;
+  color: var(--rating);
 }
 
 /* ratingInputElement's clickable 5-star picker (common.js) - Place and
@@ -139,7 +150,7 @@
 }
 
 .rating-star.filled {
-  color: #b8860b;
+  color: var(--rating);
 }
 
 /* --- view pane: read-only display shown by default, with an Edit button
@@ -213,7 +224,7 @@
   margin-top: 24px;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: #fff;
+  background: var(--surface);
   overflow: hidden;
 }
 
@@ -331,7 +342,7 @@
 /* --- trip header on trip.html --- */
 
 .trip-header {
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 20px;
@@ -480,7 +491,7 @@
 
 .agenda-day {
   flex: 0 0 240px;
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 12px;
@@ -590,7 +601,7 @@
   padding: 3px 8px;
   border-radius: 4px;
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-text);
   cursor: pointer;
 }
 
@@ -701,7 +712,7 @@ body.agenda-locked .agenda-slot {
   z-index: 1000;
   pointer-events: none;
   opacity: 0.95;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
+  box-shadow: var(--shadow);
   cursor: grabbing;
 }
 
@@ -1551,7 +1562,7 @@ td.verdict-td {
   padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface);
   cursor: pointer;
   text-transform: none;
   letter-spacing: normal;

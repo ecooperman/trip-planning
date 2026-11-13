@@ -407,6 +407,55 @@ function canEditTrip() {
   return !document.body.classList.contains("role-view");
 }
 
+// The new look (data-ui="v2") keeps an action row calm: the main buttons stay
+// (Edit, and anything marked .keep) and every other button folds into a "..."
+// menu. The real buttons stay in the page, hidden, and the menu items press
+// them - so each button's handler and its owner/editor rules are used as
+// they were. Does nothing on a page that hasn't opted in.
+function tidyActions(actions, { keep = ".edit-toggle-btn, .keep" } = {}) {
+  if (!actions || document.documentElement.getAttribute("data-ui") !== "v2") return actions;
+  const folded = [...actions.children].filter((child) => !child.matches(keep));
+  if (!folded.length) return actions;
+
+  const body = document.body;
+  const offered = (button) => {
+    if (button.classList.contains("needs-owner") && (body.classList.contains("role-view") || body.classList.contains("role-edit"))) return false;
+    if (button.classList.contains("needs-edit") && body.classList.contains("role-view")) return false;
+    return true;
+  };
+  const iconFor = (button) => {
+    const text = button.textContent.toLowerCase();
+    if (button.classList.contains("danger-btn")) return "trash";
+    if (text.includes("archive")) return "archive";
+    if (text.includes("export")) return "download";
+    return null;
+  };
+
+  const holder = Global.el("div", { class: "hidden" }, folded);
+  const menu = Global.buildMenu({
+    icon: "more",
+    ariaLabel: "More actions",
+    items: () => {
+      const items = [];
+      const dangerous = [];
+      for (const button of folded) {
+        if (!offered(button)) continue;
+        const item = {
+          label: button.textContent.trim(),
+          icon: iconFor(button),
+          danger: button.classList.contains("danger-btn"),
+          onclick: () => button.click(),
+        };
+        (item.danger ? dangerous : items).push(item);
+      }
+      // Anything destructive goes last, set apart.
+      return dangerous.length && items.length ? [...items, { separator: true }, ...dangerous] : [...items, ...dangerous];
+    },
+  });
+  actions.append(holder, menu);
+  return actions;
+}
+
 // Which paid services this person can use right now: their own key (saved on
 // the Profile page), or the server's for an administrator - never the server's
 // for anyone else (see app/apikeys.py). Load once per page before building

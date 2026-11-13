@@ -189,7 +189,7 @@ function buildPlaceViewPane(card, place) {
   });
 
   actions.append(deleteBtn, Global.el("button", { type: "button", class: "secondary-btn edit-toggle-btn", text: "Edit" }));
-  pane.appendChild(actions);
+  pane.appendChild(tidyActions(actions));
   return pane;
 }
 
