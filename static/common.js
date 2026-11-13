@@ -428,7 +428,11 @@ function tidyActions(actions, { keep = ".edit-toggle-btn, .keep" } = {}) {
     if (button.classList.contains("danger-btn")) return "trash";
     if (text.includes("archive")) return "archive";
     if (text.includes("export")) return "download";
-    return null;
+    if (text.includes("city") || text.includes("cities")) return "tag"; // the same pin-ish icon Places uses in the nav
+    if (text.includes("place")) return "tag"; // "Create a place from this"
+    if (text.includes("remove")) return "external"; // "Remove from trip": it leaves the trip, the activity stays
+    // Never leave an entry bare: a menu where only some rows have icons looks broken.
+    return "sliders";
   };
 
   const holder = Global.el("div", { class: "hidden" }, folded);
