@@ -150,15 +150,14 @@ function buildPlaceViewPane(card, place) {
   if (fields.length) pane.appendChild(Global.el("div", { class: "view-fields" }, fields));
 
   const links = Global.el("div", { class: "view-links" });
-  if (place.url) links.appendChild(Global.el("a", { href: place.url, target: "_blank", rel: "noopener noreferrer", class: "secondary-btn", text: "Visit website →" }));
+  if (place.url) links.appendChild(iconLink("Visit website", "arrow-right", { href: place.url, target: "_blank", rel: "noopener noreferrer", class: "secondary-btn" }));
   if (place.address) {
     links.appendChild(
-      Global.el("a", {
+      iconLink("Open map", "arrow-right", {
         href: googleMapsSearchUrl(place.address),
         target: "_blank",
         rel: "noopener noreferrer",
         class: "secondary-btn",
-        text: "Open map →",
         onclick: (e) => openGoogleMapsPreferringApp(e, "search", place.address),
       })
     );

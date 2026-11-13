@@ -338,15 +338,14 @@ function buildStayViewPane(card, stay) {
   if (fields.length) pane.appendChild(Global.el("div", { class: "view-fields" }, fields));
 
   const links = Global.el("div", { class: "view-links" });
-  if (stay.url) links.appendChild(Global.el("a", { href: stay.url, target: "_blank", rel: "noopener noreferrer", class: "secondary-btn", text: "Visit website →" }));
+  if (stay.url) links.appendChild(iconLink("Visit website", "arrow-right", { href: stay.url, target: "_blank", rel: "noopener noreferrer", class: "secondary-btn" }));
   if (stay.address) {
     links.appendChild(
-      Global.el("a", {
+      iconLink("Open map", "arrow-right", {
         href: googleMapsSearchUrl(stay.address),
         target: "_blank",
         rel: "noopener noreferrer",
         class: "secondary-btn",
-        text: "Open map →",
         onclick: (e) => openGoogleMapsPreferringApp(e, "search", stay.address),
       })
     );
@@ -774,10 +773,9 @@ function renderCompareStaysLink() {
   if (!mount) return;
   mount.innerHTML = "";
   mount.appendChild(
-    Global.el("a", {
+    iconLink("Compare options", "arrow-right", {
       href: `compare.html?trip=${tripId}`,
       class: "secondary-btn",
-      text: "⚖ Compare options →",
     })
   );
 }
@@ -840,7 +838,7 @@ function buildTravelSegmentViewPane(card, segment) {
   if (fields.length) pane.appendChild(Global.el("div", { class: "view-fields" }, fields));
 
   const links = Global.el("div", { class: "view-links" });
-  if (segment.url) links.appendChild(Global.el("a", { href: segment.url, target: "_blank", rel: "noopener noreferrer", class: "secondary-btn", text: "Visit website →" }));
+  if (segment.url) links.appendChild(iconLink("Visit website", "arrow-right", { href: segment.url, target: "_blank", rel: "noopener noreferrer", class: "secondary-btn" }));
   if (links.children.length) pane.appendChild(links);
 
   const actions = Global.el("div", { class: "item-actions" });
@@ -1251,7 +1249,7 @@ function buildDogCareBookingViewPane(card, booking) {
   if (fields.length) pane.appendChild(Global.el("div", { class: "view-fields" }, fields));
 
   const links = Global.el("div", { class: "view-links" });
-  if (booking.url) links.appendChild(Global.el("a", { href: booking.url, target: "_blank", rel: "noopener noreferrer", class: "secondary-btn", text: "Visit website →" }));
+  if (booking.url) links.appendChild(iconLink("Visit website", "arrow-right", { href: booking.url, target: "_blank", rel: "noopener noreferrer", class: "secondary-btn" }));
   if (links.children.length) pane.appendChild(links);
 
   const reload = () => loadDogCareBookings();

@@ -83,7 +83,7 @@ function buildTripViewPane(card, trip) {
   ].filter(Boolean);
   pane.appendChild(Global.el("div", { class: "view-fields" }, fields));
 
-  const links = [Global.el("a", { href: `trip.html?id=${trip.id}`, class: "secondary-btn", text: "Open trip page →" })];
+  const links = [iconLink("Open trip page", "arrow-right", { href: `trip.html?id=${trip.id}`, class: "secondary-btn" })];
 
   // The owner can give people access right here, without opening the trip: a
   // Share button that reveals the "Who has access" panel (shared-assets'

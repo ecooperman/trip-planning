@@ -272,10 +272,10 @@ function buildActivityViewPane(card, activity, { onChanged, onDeleted, onUnlink,
   // (not appended after the others) since it's the most relevant action
   // once linked, not an afterthought.
   if (activity.place_id) {
-    links.appendChild(Global.el("a", { href: `places.html?id=${activity.place_id}`, class: "secondary-btn", text: "🔗 View place →" }));
+    links.appendChild(iconLink("View place", "arrow-right", { href: `places.html?id=${activity.place_id}`, class: "secondary-btn" }));
   }
-  if (activity.url) links.appendChild(Global.el("a", { href: activity.url, target: "_blank", rel: "noopener noreferrer", class: "secondary-btn", text: "Visit website →" }));
-  if (activity.map_link) links.appendChild(Global.el("a", { href: activity.map_link, target: "_blank", rel: "noopener noreferrer", class: "secondary-btn", text: "Open map →" }));
+  if (activity.url) links.appendChild(iconLink("Visit website", "arrow-right", { href: activity.url, target: "_blank", rel: "noopener noreferrer", class: "secondary-btn" }));
+  if (activity.map_link) links.appendChild(iconLink("Open map", "arrow-right", { href: activity.map_link, target: "_blank", rel: "noopener noreferrer", class: "secondary-btn" }));
   if (activity.phone_number) links.appendChild(Global.el("a", { href: `tel:${activity.phone_number}`, class: "secondary-btn", text: `Call ${activity.phone_number}` }));
   if (links.children.length) pane.appendChild(links);
 

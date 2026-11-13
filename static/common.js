@@ -419,6 +419,17 @@ function iconButton(label, icon, attrs = {}) {
   return button;
 }
 
+// The same for a link that looks like a button. The arrow that used to trail
+// these labels ("Visit website →") is now the icon in front.
+function iconLink(label, icon, attrs = {}) {
+  const link = Global.el("a", attrs, [
+    Global.el("span", { class: "btn-icon", "data-icon": icon, "aria-hidden": "true" }),
+    ` ${label}`,
+  ]);
+  applyIcons(link);
+  return link;
+}
+
 function setButtonLabel(button, label) {
   button.lastChild.textContent = ` ${label}`;
 }
