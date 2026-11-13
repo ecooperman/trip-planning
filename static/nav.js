@@ -23,9 +23,7 @@ function buildTripsNav(me) {
   const items = [
     { href: "/", icon: "compass", label: "Trips", active: active === "trips" && !here("/invites.html") && !here("/users.html") },
     { href: "/activities.html", icon: "list", label: "Activities", active: active === "activities" },
-    // No dedicated map-pin icon exists in shared-assets yet - "tag" reused
-    // pragmatically rather than adding one there for a single app's sake.
-    { href: "/places.html", icon: "tag", label: "Places", active: active === "places" },
+    { href: "/places.html", icon: "map-pin", label: "Places", active: active === "places" },
   ];
   if (me) {
     items.push({

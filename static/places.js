@@ -189,7 +189,7 @@ function buildPlaceViewPane(card, place) {
   });
 
   actions.append(deleteBtn, Global.el("button", { type: "button", class: "secondary-btn edit-toggle-btn", text: "Edit" }));
-  pane.appendChild(tidyActions(actions));
+  pane.appendChild(actions); // Delete + Edit only: a one-item menu would just hide Delete
   return pane;
 }
 
@@ -220,7 +220,7 @@ function buildPlaceScrapeSection(place) {
   if (place.scrape_status === "success") {
     section.appendChild(
       Global.el("div", { class: "scrape-preview" }, [
-        place.scraped_image_url ? Global.el("img", { src: place.scraped_image_url, alt: "" }) : null,
+        place.scraped_image_url ? hideIfBroken(Global.el("img", { src: place.scraped_image_url, alt: "" })) : null,
         Global.el("div", {}, [
           Global.el("div", { class: "scrape-preview-title", text: place.scraped_title || "" }),
           Global.el("div", { class: "scrape-preview-desc", text: place.scraped_description || "" }),

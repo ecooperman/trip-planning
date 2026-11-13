@@ -407,56 +407,37 @@ function canEditTrip() {
   return !document.body.classList.contains("role-view");
 }
 
+// A picture saved from a scraped page may no longer load (an address that
+// expired before pages started keeping their own copy): take the broken image
+// out instead of leaving an empty frame. Returns the element, for chaining.
+function hideIfBroken(img) {
+  img.addEventListener("error", () => img.remove());
+  return img;
+}
+
 // The new look (data-ui="v2") keeps an action row calm: the main buttons stay
 // (Edit, and anything marked .keep) and every other button folds into a "..."
-// menu. The real buttons stay in the page, hidden, and the menu items press
-// them - so each button's handler and its owner/editor rules are used as
-// they were. Does nothing on a page that hasn't opted in.
-function tidyActions(actions, { keep = ".edit-toggle-btn, .keep" } = {}) {
-  if (!actions || document.documentElement.getAttribute("data-ui") !== "v2") return actions;
-  const folded = [...actions.children].filter((child) => !child.matches(keep));
-  if (!folded.length) return actions;
-
+// menu - Global.foldActions (shared-assets) does the folding; this adds what is
+// specific to trips: which buttons the person's role allows (the same rules
+// style.css applies to .needs-owner / .needs-edit) and the icons.
+function tidyActions(actions) {
   const body = document.body;
-  const offered = (button) => {
-    if (button.classList.contains("needs-owner") && (body.classList.contains("role-view") || body.classList.contains("role-edit"))) return false;
-    if (button.classList.contains("needs-edit") && body.classList.contains("role-view")) return false;
-    return true;
-  };
-  const iconFor = (button) => {
-    const text = button.textContent.toLowerCase();
-    if (button.classList.contains("danger-btn")) return "trash";
-    if (text.includes("archive")) return "archive";
-    if (text.includes("export")) return "download";
-    if (text.includes("city") || text.includes("cities")) return "tag"; // the same pin-ish icon Places uses in the nav
-    if (text.includes("place")) return "tag"; // "Create a place from this"
-    if (text.includes("remove")) return "external"; // "Remove from trip": it leaves the trip, the activity stays
-    // Never leave an entry bare: a menu where only some rows have icons looks broken.
-    return "sliders";
-  };
-
-  const holder = Global.el("div", { class: "hidden" }, folded);
-  const menu = Global.buildMenu({
-    icon: "more",
-    ariaLabel: "More actions",
-    items: () => {
-      const items = [];
-      const dangerous = [];
-      for (const button of folded) {
-        if (!offered(button)) continue;
-        const item = {
-          label: button.textContent.trim(),
-          icon: iconFor(button),
-          danger: button.classList.contains("danger-btn"),
-          onclick: () => button.click(),
-        };
-        (item.danger ? dangerous : items).push(item);
-      }
-      // Anything destructive goes last, set apart.
-      return dangerous.length && items.length ? [...items, { separator: true }, ...dangerous] : [...items, ...dangerous];
+  Global.foldActions(actions, {
+    keep: ".edit-toggle-btn, .keep",
+    offered: (button) => {
+      if (button.classList.contains("hidden") || button.hidden) return false;
+      if (button.classList.contains("needs-owner") && (body.classList.contains("role-view") || body.classList.contains("role-edit"))) return false;
+      if (button.classList.contains("needs-edit") && body.classList.contains("role-view")) return false;
+      return true;
+    },
+    icon: (button) => {
+      const text = button.textContent.toLowerCase();
+      if (text.includes("export")) return "download";
+      if (text.includes("city") || text.includes("cities") || text.includes("place")) return "map-pin"; // "Fill missing activity cities", "Create a place from this"
+      if (text.includes("remove")) return "external"; // "Remove from trip": it leaves the trip, the activity stays
+      return null; // the rest (delete, archive, anything new) use the shared defaults
     },
   });
-  actions.append(holder, menu);
   return actions;
 }
 

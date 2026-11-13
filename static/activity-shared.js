@@ -625,7 +625,7 @@ function renderScrapePreview(record) {
   if (record.scrape_status === "success") {
     const preview = Global.el("div", { class: "scrape-preview" });
     if (record.scraped_image_url) {
-      preview.appendChild(Global.el("img", { src: record.scraped_image_url, class: "scrape-image", alt: "" }));
+      preview.appendChild(hideIfBroken(Global.el("img", { src: record.scraped_image_url, class: "scrape-image", alt: "" })));
     }
     const textWrap = Global.el("div", { class: "scrape-text" });
     if (record.scraped_title) textWrap.appendChild(Global.el("div", { class: "scrape-title", text: record.scraped_title }));

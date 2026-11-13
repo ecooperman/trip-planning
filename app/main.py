@@ -13,6 +13,7 @@ from .config import SHARED_ASSETS_BASE
 from .deps import get_db
 from .routers import (
     activities,
+    cached_images,
     categories,
     distance,
     dog_care,
@@ -122,6 +123,7 @@ app.include_router(profile.router)
 app.include_router(trips.router)
 app.include_router(activities.router)
 app.include_router(places.router)
+app.include_router(cached_images.router)
 app.include_router(stays.router)
 app.include_router(stay_compare.router)
 app.include_router(travel.router)

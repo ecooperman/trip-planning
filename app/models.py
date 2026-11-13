@@ -591,6 +591,21 @@ class PlaceImage(Base):
     place = relationship("Place", back_populates="images")
 
 
+class CachedImage(Base):
+    """A copy of an image found while scraping a page (its og:image). Sites
+    like Instagram hand out signed image addresses that stop working after a
+    few weeks, so the picture is kept here when the page is scraped and
+    scraped_image_url points at /api/cached-images/<id> instead. Plain binary
+    storage, same as PlaceImage."""
+
+    __tablename__ = "cached_images"
+
+    id = Column(Integer, primary_key=True)
+    content_type = Column(String, nullable=False)
+    data = Column(LargeBinary, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class Stay(Base):
     """A lodging option (or booking) for a trip. Always belongs to exactly
     one trip - created from within the trip's page, not standalone.

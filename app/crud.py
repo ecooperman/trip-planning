@@ -5,7 +5,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
-from . import config, models, schemas
+from . import config, imagecache, models, schemas
 
 # Parked owner of everything that existed before accounts did (see the
 # migration); the first person to sign in takes it over (user_for_request).
@@ -970,7 +970,7 @@ def save_place_scrape_result(
     db_place.scrape_status = status
     db_place.scraped_title = title
     db_place.scraped_description = description
-    db_place.scraped_image_url = image_url
+    db_place.scraped_image_url = imagecache.localize(db, image_url)
     db_place.scrape_error = error
     db_place.scraped_at = datetime.utcnow()
     db.commit()
@@ -1167,7 +1167,7 @@ def save_activity_scrape_result(
     db_activity.scrape_status = status
     db_activity.scraped_title = title
     db_activity.scraped_description = description
-    db_activity.scraped_image_url = image_url
+    db_activity.scraped_image_url = imagecache.localize(db, image_url)
     db_activity.scrape_error = error
     db_activity.scraped_at = datetime.utcnow()
     db.commit()
@@ -1288,7 +1288,7 @@ def save_stay_scrape_result(
     db_stay.scrape_status = status
     db_stay.scraped_title = title
     db_stay.scraped_description = description
-    db_stay.scraped_image_url = image_url
+    db_stay.scraped_image_url = imagecache.localize(db, image_url)
     db_stay.scrape_error = error
     db_stay.scraped_at = datetime.utcnow()
     db.commit()
@@ -1356,7 +1356,7 @@ def create_imported_stay(
         scrape_status=scrape_status,
         scraped_title=scraped_title,
         scraped_description=scraped_description,
-        scraped_image_url=scraped_image_url,
+        scraped_image_url=imagecache.localize(db, scraped_image_url),
         scrape_error=scrape_error,
         scraped_at=datetime.utcnow() if scrape_status != models.ScrapeStatus.not_started else None,
     )
@@ -1419,7 +1419,7 @@ def update_imported_stay(
         db_stay.scrape_status = scrape_status
         db_stay.scraped_title = scraped_title
         db_stay.scraped_description = scraped_description
-        db_stay.scraped_image_url = scraped_image_url
+        db_stay.scraped_image_url = imagecache.localize(db, scraped_image_url)
         db_stay.scrape_error = scrape_error
         db_stay.scraped_at = datetime.utcnow()
     if touched:
@@ -1748,7 +1748,7 @@ def create_activity_from_plan(db: Session, owner_id: int, plan: dict, trip_id: O
         db_activity.scrape_status = models.ScrapeStatus.success
         db_activity.scraped_title = plan.get("scraped_title")
         db_activity.scraped_description = plan.get("scraped_description")
-        db_activity.scraped_image_url = plan.get("scraped_image_url")
+        db_activity.scraped_image_url = imagecache.localize(db, plan.get("scraped_image_url"))
         db_activity.scraped_at = datetime.utcnow()
         db.commit()
         db.refresh(db_activity)

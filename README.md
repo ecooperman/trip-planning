@@ -263,6 +263,11 @@ upgrade head`, and restarts the service. Needs these repo secrets set once
   sites still get an OG-tag preview if they expose one. Add another
   site-specific strategy (hotels.com, Expedia, Kayak, ...) by copying
   `app/scraping/airbnb.py` and registering it in `app/scraping/registry.py`.
+- A scraped page's picture is kept, not hot-linked: Instagram-style signed image addresses
+  stop working after a few weeks, so `app/imagecache.py` downloads the image when a scrape is
+  saved (through `netguard`, images only, never SVG) into the `cached_images` table and the
+  activity/place/stay stores `/api/cached-images/<id>` instead. If the download fails the
+  original address is stored, and the pages hide an image that no longer loads.
 - The frontend has no build step: `static/common.js` holds fetch/DOM
   helpers shared by every page, and `static/activity-shared.js` holds the
   activity form/card used identically by `activities.html` (standalone) and
