@@ -92,12 +92,12 @@ function buildTripViewPane(card, trip) {
   if (trip.my_role === "owner") {
     const panel = Global.el("div");
     accessBox = Global.el("div", { class: "access-box hidden" }, [Global.el("label", { text: "Who has access" }), panel]);
-    const shareBtn = Global.el("button", { type: "button", class: "secondary-btn", "aria-expanded": "false", text: "Share" });
+    const shareBtn = iconButton("Share", "share", { class: "secondary-btn", "aria-expanded": "false" });
     let access = null;
     shareBtn.addEventListener("click", () => {
       const open = accessBox.classList.toggle("hidden") === false;
       shareBtn.setAttribute("aria-expanded", String(open));
-      shareBtn.textContent = open ? "Hide access" : "Share";
+      setButtonLabel(shareBtn, open ? "Hide access" : "Share");
       if (!open) return;
       if (!access) {
         access = Access.mount(panel, {
@@ -159,7 +159,7 @@ function buildTripViewPane(card, trip) {
   // (the server refuses the rest; see app/access.py).
   const role = trip.my_role || "owner";
   if (role === "owner") actions.append(deleteBtn, archiveBtn);
-  if (role !== "view") actions.append(Global.el("button", { type: "button", class: "secondary-btn edit-toggle-btn", text: "Edit" }));
+  if (role !== "view") actions.append(editButton());
   if (actions.children.length) pane.appendChild(tidyActions(actions));
   return pane;
 }

@@ -74,7 +74,7 @@ function buildTripHeaderViewPane() {
     Global.el("span", { class: "btn-icon", "data-icon": "download", "aria-hidden": "true" }),
     " Export",
   ]);
-  const editBtn = Global.el("button", { type: "button", class: "secondary-btn edit-toggle-btn", text: "Edit" });
+  const editBtn = editButton();
   const actionBtns = [agendaLink, exportLink];
   // Only once the trip has a city to fill from - the endpoint 400s
   // otherwise, and there'd be nothing meaningful for the button to do yet.
@@ -107,12 +107,12 @@ function buildTripHeaderViewPane() {
   if (currentTrip.my_role === "owner") {
     const panel = Global.el("div");
     accessBox = Global.el("div", { class: "access-box hidden" }, [Global.el("label", { text: "Who has access" }), panel]);
-    const shareBtn = Global.el("button", { type: "button", class: "secondary-btn keep", "aria-expanded": "false", text: "Share" });
+    const shareBtn = iconButton("Share", "share", { class: "secondary-btn keep", "aria-expanded": "false" });
     let access = null;
     shareBtn.addEventListener("click", () => {
       const open = accessBox.classList.toggle("hidden") === false;
       shareBtn.setAttribute("aria-expanded", String(open));
-      shareBtn.textContent = open ? "Hide access" : "Share";
+      setButtonLabel(shareBtn, open ? "Hide access" : "Share");
       if (!open) return;
       if (!access) {
         access = Access.mount(panel, {
@@ -387,7 +387,7 @@ function buildStayViewPane(card, stay) {
     },
   });
 
-  actions.append(deleteBtn, archiveBtn, Global.el("button", { type: "button", class: "secondary-btn edit-toggle-btn", text: "Edit" }));
+  actions.append(deleteBtn, archiveBtn, editButton());
   pane.appendChild(tidyActions(actions));
   return pane;
 }
@@ -872,7 +872,7 @@ function buildTravelSegmentViewPane(card, segment) {
     },
   });
 
-  actions.append(deleteBtn, archiveBtn, Global.el("button", { type: "button", class: "secondary-btn edit-toggle-btn", text: "Edit" }));
+  actions.append(deleteBtn, archiveBtn, editButton());
   pane.appendChild(tidyActions(actions));
   return pane;
 }
@@ -1291,7 +1291,7 @@ function buildDogCareBookingViewPane(card, booking) {
     },
   });
 
-  actions.append(deleteBtn, archiveBtn, Global.el("button", { type: "button", class: "secondary-btn edit-toggle-btn", text: "Edit" }));
+  actions.append(deleteBtn, archiveBtn, editButton());
   pane.appendChild(tidyActions(actions));
   return pane;
 }

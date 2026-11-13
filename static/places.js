@@ -188,7 +188,7 @@ function buildPlaceViewPane(card, place) {
     },
   });
 
-  actions.append(deleteBtn, Global.el("button", { type: "button", class: "secondary-btn edit-toggle-btn", text: "Edit" }));
+  actions.append(deleteBtn, editButton());
   pane.appendChild(actions); // Delete + Edit only: a one-item menu would just hide Delete
   return pane;
 }

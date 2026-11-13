@@ -368,7 +368,7 @@ function buildActivityViewPane(card, activity, { onChanged, onDeleted, onUnlink,
       })
     );
   }
-  actions.append(Global.el("button", { type: "button", class: "secondary-btn edit-toggle-btn", text: "Edit" }));
+  actions.append(editButton());
   pane.appendChild(tidyActions(actions));
 
   return pane;

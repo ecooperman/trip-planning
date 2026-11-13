@@ -407,6 +407,27 @@ function canEditTrip() {
   return !document.body.classList.contains("role-view");
 }
 
+// A button with an icon in front of its label, the same look as the Agenda
+// link on the trip header - so a row of buttons doesn't mix some with icons and
+// some without. setButtonLabel changes the words and keeps the icon.
+function iconButton(label, icon, attrs = {}) {
+  const button = Global.el("button", { type: "button", ...attrs }, [
+    Global.el("span", { class: "btn-icon", "data-icon": icon, "aria-hidden": "true" }),
+    ` ${label}`,
+  ]);
+  applyIcons(button);
+  return button;
+}
+
+function setButtonLabel(button, label) {
+  button.lastChild.textContent = ` ${label}`;
+}
+
+// The Edit button every card and the trip header carries (wireViewEditToggle finds it by class).
+function editButton() {
+  return iconButton("Edit", "edit", { class: "secondary-btn edit-toggle-btn" });
+}
+
 // A picture saved from a scraped page may no longer load (an address that
 // expired before pages started keeping their own copy): take the broken image
 // out instead of leaving an empty frame. Returns the element, for chaining.
