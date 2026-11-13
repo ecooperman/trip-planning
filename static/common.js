@@ -73,6 +73,27 @@ function buildCategoryMultiSelect(selectedIds) {
     onChange: (values) => {
       selected = new Set(values);
     },
+    // Make a category right here instead of on the Categories page: just a name
+    // (the server gives it a neutral colour, changeable there later).
+    addNew: {
+      label: "Add new category...",
+      placeholder: "New category",
+      async create(name) {
+        try {
+          const created = await Global.fetchJSON(CATEGORIES_API, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name }),
+          });
+          categories.push(created);
+          categoriesById[created.id] = created;
+          return { value: created.id, label: created.name, color: created.color };
+        } catch (err) {
+          Global.showMessage(err.message, "error");
+          return null;
+        }
+      },
+    },
   });
   return { element, getSelectedIds: () => [...selected].map(Number) };
 }
