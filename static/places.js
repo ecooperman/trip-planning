@@ -44,6 +44,7 @@ function placePhotoGallery(place, onChanged) {
           type: "button",
           class: "place-photo-remove",
           "aria-label": `Remove ${photo.filename}`,
+          "data-btn-icon": "x",
           text: "×",
           onclick: async () => {
             if (!confirm("Remove this photo?")) return;

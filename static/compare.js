@@ -74,14 +74,15 @@ function renderCriteriaEditor() {
     if (!canEditTrip()) label.disabled = weight.disabled = must.disabled = true;
     must.addEventListener("change", () => patchCriterion(c.id, { must_have: must.checked }));
 
-    const up = Global.el("button", { type: "button", class: "icon-btn", text: "↑", title: "Move up", onclick: () => moveCriterion(index, -1) });
-    const down = Global.el("button", { type: "button", class: "icon-btn", text: "↓", title: "Move down", onclick: () => moveCriterion(index, 1) });
+    const up = Global.el("button", { type: "button", class: "icon-btn", "data-btn-icon": "arrow-up", text: "↑", title: "Move up", onclick: () => moveCriterion(index, -1) });
+    const down = Global.el("button", { type: "button", class: "icon-btn", "data-btn-icon": "arrow-down", text: "↓", title: "Move down", onclick: () => moveCriterion(index, 1) });
     up.disabled = index === 0;
     down.disabled = index === state.criteria.length - 1;
 
     const del = Global.el("button", {
       type: "button",
       class: "icon-btn danger",
+      "data-btn-icon": "x",
       text: "✕",
       title: "Delete criterion",
       onclick: async () => {

@@ -431,6 +431,7 @@ function buildResizeControls(activity, nextActivity) {
     const btn = Global.el("button", {
       type: "button",
       class: "agenda-entry-resize-btn",
+      "data-btn-icon": delta > 0 ? "plus" : "minus",
       text: label,
       "aria-label": `${delta > 0 ? "Extend" : "Shorten"} "${activity.name}" by 30 minutes`,
     });
@@ -586,6 +587,7 @@ function renderSlotCreateForm(slotEl, slot) {
   const cancelBtn = Global.el("button", {
     type: "button",
     class: "agenda-slot-create-cancel",
+    "data-btn-icon": "x",
     text: "✕",
     "aria-label": "Cancel",
     onclick: (e) => {

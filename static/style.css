@@ -1624,3 +1624,10 @@ body.role-view .item-summary-done-toggle,
 body.role-view .verdict-cell {
   cursor: default;
 }
+
+/* Small round remove/cancel buttons: the icon fills the circle without overflowing it. */
+.place-photo-remove .btn-icon svg,
+.agenda-slot-create-cancel .btn-icon svg {
+  width: 12px;
+  height: 12px;
+}
