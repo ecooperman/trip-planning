@@ -363,14 +363,6 @@
   flex-wrap: wrap;
 }
 
-.back-link {
-  display: inline-block;
-  margin-bottom: 12px;
-  font-size: 13px;
-  color: var(--muted);
-  text-decoration: none;
-}
-
 .agenda-top-links {
   display: flex;
   align-items: center;
@@ -395,10 +387,6 @@
 .agenda-lock-btn-unlocked {
   color: var(--accent);
   background: var(--accent-bg);
-}
-
-.back-link:hover {
-  text-decoration: underline;
 }
 
 .section {
