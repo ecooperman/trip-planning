@@ -511,8 +511,8 @@ function agendaEntryElement(activity, { nextActivity = null } = {}) {
   if (badges.children.length) entry.appendChild(badges);
 
   const links = Global.el("div", { class: "agenda-entry-links" });
-  if (activity.url) links.appendChild(Global.el("a", { href: activity.url, target: "_blank", rel: "noopener noreferrer", class: "agenda-entry-link", text: "Open link →" }));
-  if (activity.map_link) links.appendChild(Global.el("a", { href: activity.map_link, target: "_blank", rel: "noopener noreferrer", class: "agenda-entry-link", text: "Map →" }));
+  if (activity.url) links.appendChild(iconLink("Open link", "external", { href: activity.url, target: "_blank", rel: "noopener noreferrer", class: "agenda-entry-link" }));
+  if (activity.map_link) links.appendChild(iconLink("Map", "map-pin", { href: activity.map_link, target: "_blank", rel: "noopener noreferrer", class: "agenda-entry-link" }));
 
   // Directions are always "from wherever you are right now" to this
   // activity's own location - the same link on every entry, scheduled or
@@ -523,12 +523,11 @@ function agendaEntryElement(activity, { nextActivity = null } = {}) {
   // directions - no need to duplicate it on every entry too.
   const dest = locationQueryFor(activity);
   links.appendChild(
-    Global.el("a", {
+    iconLink("Directions", "arrow-right", {
       href: googleMapsDirectionsUrl(dest),
       target: "_blank",
       rel: "noopener noreferrer",
       class: "agenda-entry-link agenda-entry-directions",
-      text: "Directions →",
       onclick: (e) => openGoogleMapsPreferringApp(e, "directions", dest),
     })
   );
@@ -539,7 +538,7 @@ function agendaEntryElement(activity, { nextActivity = null } = {}) {
   // card expanded and straight in its edit form, not just scrolled to.
   // A plain link, not gated by the lock - it doesn't touch the schedule
   // at all, so there's nothing for the lock to protect here.
-  links.appendChild(Global.el("a", { href: `activities.html?edit=${activity.id}`, class: "agenda-entry-link needs-owner", text: "Edit →" }));
+  links.appendChild(iconLink("Edit", "edit", { href: `activities.html?edit=${activity.id}`, class: "agenda-entry-link needs-owner" }));
 
   if (links.children.length) entry.appendChild(links);
 
@@ -673,7 +672,7 @@ function renderDayColumn(dayIso, { excludeActivityId = null } = {}) {
   // being repeated on every day.
   const stay = findStayForDay(dayIso);
   if (stay) {
-    header.appendChild(Global.el("div", { class: "agenda-day-stay", text: `📍 ${stay.name}` }));
+    header.appendChild(Global.el("div", { class: "agenda-day-stay" }, [inlineIcon("map-pin"), ` ${stay.name}`]));
     const departingStay = findDepartingStayForDay(dayIso, stay);
     if (departingStay) {
       header.appendChild(Global.el("div", { class: "agenda-day-stay-transition", text: `Checking out of "${departingStay.name}" today` }));
@@ -779,7 +778,7 @@ function renderStaySummary() {
 
   for (const stay of activeStays) {
     const entry = Global.el("div", { class: "stay-banner-entry" });
-    entry.appendChild(Global.el("span", { class: "stay-banner-pin", "aria-hidden": "true", text: "📍" }));
+    entry.appendChild(Global.el("span", { class: "stay-banner-pin", "aria-hidden": "true" }, [inlineIcon("map-pin")]));
     entry.appendChild(
       stay.address
         ? Global.el("a", {

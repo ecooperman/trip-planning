@@ -83,7 +83,7 @@ function keyCard(k, canSave) {
     canSave
       ? Global.el("div", { class: "key-form" }, [input, ...actions])
       : Global.el("p", { class: "field-hint", text: "Saving keys isn't set up on the server yet - ask the administrator." }),
-    Global.el("a", { href: k.get_url, target: "_blank", rel: "noopener noreferrer", class: "field-hint key-get", text: `Where to get a ${k.label} key →` }),
+    iconLink(`Where to get a ${k.label} key`, "external", { href: k.get_url, target: "_blank", rel: "noopener noreferrer", class: "field-hint key-get" }),
   ]);
 }
 

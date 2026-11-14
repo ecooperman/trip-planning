@@ -225,13 +225,13 @@ async function loadCoverageBanner(containerId, endpoint, { coveredText, missingL
   if (!coverage.has_dates) return;
 
   if (coverage.covered) {
-    container.appendChild(Global.el("div", { class: "coverage-banner covered", text: `✓ ${coveredText}` }));
+    container.appendChild(Global.el("div", { class: "coverage-banner covered" }, [inlineIcon("check"), ` ${coveredText}`]));
     return;
   }
 
   const banner = Global.el("div", { class: "coverage-banner missing" });
   const n = coverage.missing_dates.length;
-  banner.appendChild(document.createTextNode(`⚠ ${n} day${n === 1 ? "" : "s"} ${missingLabel}:`));
+  banner.append(inlineIcon("alert-triangle"), ` ${n} day${n === 1 ? "" : "s"} ${missingLabel}:`);
   banner.appendChild(Global.el("div", { class: "missing-dates", text: coverage.missing_dates.map(Global.formatDateBadge).join(", ") }));
   container.appendChild(banner);
 }
@@ -553,7 +553,8 @@ function buildStayScreenshotControl(stay) {
   const btn = Global.el("button", {
     type: "button",
     class: "scrape-btn",
-    text: "📸 Fill details from screenshot",
+    "data-btn-icon": "camera",
+    text: "Fill details from screenshot",
     onclick: () => fileInput.click(),
   });
   fileInput.addEventListener("change", async () => {
@@ -569,7 +570,7 @@ function buildStayScreenshotControl(stay) {
       loadStays();
     } catch (err) {
       btn.disabled = false;
-      btn.textContent = "📸 Fill details from screenshot";
+      btn.textContent = "Fill details from screenshot";
       Global.showMessage(`Screenshot read failed: ${err.message}`, "error");
     }
   });

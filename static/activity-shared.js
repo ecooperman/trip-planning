@@ -574,13 +574,12 @@ function buildActivityDistancesSection(activity) {
             : entry.other_city
             ? `${entry.other_name} — ${entry.other_city}`
             : entry.other_name;
-        const arrow = entry.direction === "to" ? "→" : "←";
         const parts = [];
         if (entry.walking) parts.push(`Walk ${entry.walking.distance_text} · ${entry.walking.duration_text}`);
         if (entry.driving) parts.push(`Drive ${entry.driving.distance_text} · ${entry.driving.duration_text}`);
         list.appendChild(
           Global.el("li", {}, [
-            Global.el("span", { class: "distance-result-names", text: `${arrow} ${otherLabel}` }),
+            Global.el("span", { class: "distance-result-names" }, [inlineIcon(entry.direction === "to" ? "arrow-right" : "arrow-left"), ` ${otherLabel}`]),
             Global.el("span", { class: "distance-result-value", text: parts.join("  ·  ") }),
           ])
         );

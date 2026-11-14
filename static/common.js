@@ -430,6 +430,14 @@ function iconLink(label, icon, attrs = {}) {
   return link;
 }
 
+// A small icon span to put in front of text that is not a button (a banner, a tag): the icons.js
+// icon, drawn straight away. Use this instead of a text glyph like a tick, cross or warning mark.
+function inlineIcon(name) {
+  const span = Global.el("span", { class: "btn-icon", "aria-hidden": "true" });
+  span.innerHTML = ICONS[name] || "";
+  return span;
+}
+
 function setButtonLabel(button, label) {
   button.lastChild.textContent = ` ${label}`;
 }
@@ -492,7 +500,7 @@ function userCan(provider) {
 function keyNotice(feature, serviceName) {
   return Global.el("div", { class: "key-notice" }, [
     `${feature} needs your own ${serviceName} key. `,
-    Global.el("a", { href: "/profile.html", text: "Add it on your profile →" }),
+    iconLink("Add it on your profile", "arrow-right", { href: "/profile.html" }),
   ]);
 }
 

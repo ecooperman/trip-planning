@@ -313,7 +313,7 @@ function renderMatrix() {
       scoreCell.appendChild(bar);
     }
     if (mustHaveFails.length) {
-      scoreCell.appendChild(Global.el("span", { class: "must-fail-tag", text: `✗ ${mustHaveFails.join(", ")}` }));
+      scoreCell.appendChild(Global.el("span", { class: "must-fail-tag" }, [inlineIcon("x"), ` ${mustHaveFails.join(", ")}`]));
     }
     tr.appendChild(scoreCell);
 
