@@ -603,6 +603,8 @@ class CachedImage(Base):
     id = Column(Integer, primary_key=True)
     content_type = Column(String, nullable=False)
     data = Column(LargeBinary, nullable=False)
+    # sha256 of `data`: a re-scrape that finds the same picture reuses the copy already stored.
+    content_hash = Column(String, nullable=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 

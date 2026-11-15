@@ -12,7 +12,10 @@ const params = new URLSearchParams(window.location.search);
 const tripId = Number(params.get("trip"));
 
 const VERDICTS = ["unknown", "yes", "partial", "no"];
-const VERDICT_LABEL = { unknown: "?", yes: "Yes", partial: "Part", no: "No" };
+// An icon for every verdict (so the answer never rests on colour alone) plus a short word; "undecided" is
+// the icon alone.
+const VERDICT_LABEL = { unknown: "", yes: "Yes", partial: "Part", no: "No" };
+const VERDICT_ICON = { unknown: "help", yes: "check", partial: "minus", no: "x" };
 const VERDICT_SCORE = { yes: 1, partial: 0.5, no: 0, unknown: 0 };
 
 let state = { home_currency: "USD", criteria: [], stays: [], verdictMap: {} };
@@ -198,9 +201,11 @@ function verdictButton(stay, criterion) {
   const btn = Global.el("button", {
     type: "button",
     class: `verdict-cell verdict-${current}`,
-    text: VERDICT_LABEL[current],
-    title: `${criterion.label}: ${current}`,
+    title: `${criterion.label}: ${current === "unknown" ? "undecided" : current}`,
+    "aria-label": `${criterion.label}: ${current === "unknown" ? "undecided" : current}`,
   });
+  btn.appendChild(inlineIcon(VERDICT_ICON[current]));
+  if (VERDICT_LABEL[current]) btn.appendChild(document.createTextNode(VERDICT_LABEL[current]));
   // A view-only member sees each verdict but can't cycle it.
   if (!canEditTrip()) btn.disabled = true;
   btn.addEventListener("click", async () => {

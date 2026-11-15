@@ -984,6 +984,15 @@ body.agenda-locked .agenda-entry-resize {
   margin-left: auto;
 }
 
+/* The compare page's Sort dropdown and "Show archived" tick sit side by side (the tick's label is a
+   block, so without this it dropped under the dropdown). */
+.list-header-controls:has(.inline-field) {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+
 /* Once city-filter-mount (margin-left: auto above) has already pushed
    itself and the sort-select after it to the row's right edge, the
    sort-select doesn't need its own auto margin too - avoids the two
@@ -1465,6 +1474,10 @@ td.verdict-td {
 }
 
 .verdict-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
   width: 100%;
   min-width: 48px;
   border: 1px solid var(--border);
@@ -1473,6 +1486,11 @@ td.verdict-td {
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
+}
+
+.verdict-cell .btn-icon svg {
+  width: 13px;
+  height: 13px;
 }
 
 .verdict-unknown {
