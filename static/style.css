@@ -306,7 +306,9 @@
   gap: 6px;
   padding: 10px 14px;
   margin-bottom: 16px;
-  background: var(--accent-bg);
+  /* The tint is translucent, so it sits on a solid surface layer: the banner is sticky and page text
+     scrolling underneath showed through it. */
+  background: linear-gradient(var(--accent-bg), var(--accent-bg)), var(--surface);
   border: 1px solid var(--accent);
   border-radius: 8px;
   font-size: 13px;
@@ -1618,4 +1620,88 @@ body.role-view .verdict-cell {
 .agenda-slot-create-cancel .btn-icon svg {
   width: 12px;
   height: 12px;
+}
+
+
+/* --- phones: tidy filter rows ---
+   A list header's title + count stay on the first line; its filters and sort then share the rows below,
+   split evenly and lined up with the cards (they used to wrap into a ragged, right-aligned stack). The
+   ::after is a full-width, zero-height item that forces the line break; the negative margin takes back
+   the extra row gap it would add. Headers with no filters (no cities or categories yet) are untouched.
+   The sticky stay banner on the agenda stops sticking: with two or three stays it covered a fifth of
+   the screen. */
+@media (max-width: 520px) {
+  .list-header:has(> .list-header-controls:not(:empty), > .sort-select)::after {
+    content: "";
+    order: 1;
+    flex: 1 0 100%;
+    height: 0;
+    margin-top: -8px;
+  }
+
+  .list-header > .list-header-controls:not(:empty),
+  .list-header > .sort-select {
+    order: 2;
+    margin-left: 0;
+    flex: 1 1 calc(50% - 4px);
+    min-width: 0;
+  }
+
+  .list-header:has(> .list-header-controls:not(:empty), > .sort-select) {
+    margin-bottom: 12px;
+  }
+
+  .list-header:has(> .list-header-controls:not(:empty), > .sort-select) > h2 {
+    margin-bottom: 0;
+  }
+
+  .list-header > .list-header-controls:empty {
+    display: none;
+  }
+
+  .list-header > .list-header-controls .multiselect {
+    display: block;
+  }
+
+  .list-header > .list-header-controls .multiselect-trigger {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .list-header > .sort-select {
+    width: auto;
+  }
+
+  /* The compare page's Sort label + Show archived tick is one control holding two things: its own row. */
+  .list-header > .list-header-controls:has(.inline-field) {
+    flex-basis: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  /* The agenda's Unscheduled header: sort and category filter side by side, full width. */
+  .agenda-unscheduled-header-controls {
+    flex: 1 1 100%;
+  }
+
+  .agenda-unscheduled-header-controls > #unscheduled-category-filter-mount,
+  .agenda-unscheduled-header-controls > .sort-select {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .agenda-unscheduled-header-controls .multiselect {
+    display: block;
+  }
+
+  .agenda-unscheduled-header-controls .multiselect-trigger {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .stay-banner {
+    position: static;
+  }
 }
