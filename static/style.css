@@ -1676,9 +1676,14 @@ body.role-view .verdict-cell {
   .list-header > .list-header-controls:has(.inline-field) {
     flex-basis: 100%;
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
+    gap: 8px 12px;
+  }
+
+  .list-header > .list-header-controls:has(.inline-field) .checkbox-label {
+    white-space: nowrap;
   }
 
   /* The agenda's Unscheduled header: sort and category filter side by side, full width. */
@@ -1703,5 +1708,11 @@ body.role-view .verdict-cell {
 
   .stay-banner {
     position: static;
+  }
+
+  /* The Unscheduled tiles are a fixed 200px on a desktop, which left a phone's box a third empty:
+     one full-width card per row instead. */
+  .agenda-unscheduled .agenda-entry {
+    width: 100%;
   }
 }
