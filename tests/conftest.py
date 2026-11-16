@@ -60,7 +60,9 @@ def _nothing_leaves_the_machine(monkeypatch):
     for name in (
         "CF_API_TOKEN", "CF_ACCOUNT_ID", "CF_INVITEES_GROUP_ID", "NTFY_TOPIC", "NTFY_TOKEN",
         "PUSHOVER_APP_TOKEN", "PUSHOVER_USER_KEY", "SMTP_HOST", "SMTP_USERNAME", "SMTP_PASSWORD",
-        "SMTP_FROM", "NOTIFY_EMAIL",
+        "SMTP_FROM", "NOTIFY_EMAIL", "CF_TEAM_DOMAIN", "CF_ACCESS_AUD", "OIDC_ISSUER", "OIDC_JWKS_URL", "OIDC_AUDIENCE",
+        "OIDC_COOKIE", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET", "OIDC_COOKIE_DOMAIN", "OIDC_RETURN_HOSTS", "OIDC_LOGIN_URL",
+        "OIDC_LOGOUT_RETURN_PATH",
     ):
         monkeypatch.setattr(shared_settings, name, None)
     monkeypatch.setattr(config, "INVITES_PER_USER", 5)

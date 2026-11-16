@@ -5,11 +5,12 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from shared_python import oidc_login
 from sqlalchemy.orm import Session
 
 from . import crud
 from .auth import NO_ACCESS, is_admin, signed_in_email
-from .config import SHARED_ASSETS_BASE
+from .config import DEV_USER_EMAIL, SHARED_ASSETS_BASE
 from .deps import get_db
 from .routers import (
     activities,
@@ -71,6 +72,10 @@ def _render(name: str, admin_only: bool = False):
     before the StaticFiles mount below so these take priority over it."""
 
     def handler(request: Request, db: Session = Depends(get_db)):
+        # Signed out (and the apps share a front door): to the dashboard's login page and back here.
+        redirect = oidc_login.redirect_if_signed_out(request, DEV_USER_EMAIL)
+        if redirect is not None:
+            return redirect
         email = signed_in_email(request)
         user, problem = crud.user_for_request(db, email)
         if user is None:
@@ -83,7 +88,10 @@ def _render(name: str, admin_only: bool = False):
         return templates.TemplateResponse(
             request,
             "no_access.html",
-            {"shared_assets_base": SHARED_ASSETS_BASE, "heading": heading, "message": message, "email": email},
+            {
+                "shared_assets_base": SHARED_ASSETS_BASE, "heading": heading, "message": message, "email": email,
+                "logout_url": oidc_login.logout_url(request) or "/cdn-cgi/access/logout",
+            },
             status_code=403,
         )
 
@@ -116,6 +124,7 @@ async def no_cache(request: Request, call_next):
     return response
 
 
+app.include_router(oidc_login.router)  # /auth/* only when this app does its own sign-in (404 otherwise)
 app.include_router(me.router)
 app.include_router(invites.router)
 app.include_router(invites.app_router)

@@ -1,6 +1,7 @@
 from typing import List
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
+from shared_python import oidc_login
 from sqlalchemy.orm import Session
 
 from .. import apikeys, crud, models, schemas
@@ -11,7 +12,7 @@ router = APIRouter(prefix="/api/me", tags=["me"])
 
 
 @router.get("", response_model=schemas.Me)
-def get_me(user: models.User = Depends(current_user), db: Session = Depends(get_db)):
+def get_me(request: Request, user: models.User = Depends(current_user), db: Session = Depends(get_db)):
     admin = is_admin(user)
     return schemas.Me(
         id=user.id,
@@ -20,6 +21,8 @@ def get_me(user: models.User = Depends(current_user), db: Session = Depends(get_
         invites_left=crud.invites_left(db, user),
         pending_invites=crud.pending_invite_count(db) if admin else 0,
         can_use=apikeys.available(db, user),
+        # Where Log out goes: None = Cloudflare Access (the page default); otherwise the shared sign-in's logout.
+        logout_url=oidc_login.logout_url(request),
     )
 
 

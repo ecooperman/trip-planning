@@ -192,6 +192,9 @@ class Me(BaseModel):
     invites_left: Optional[int] = None
     # Requests waiting for approval (administrators only, else 0).
     pending_invites: int = 0
+    # Where this person's Log out link goes when they did not come through Cloudflare Access
+    # (null = the Cloudflare one, the page's default).
+    logout_url: Optional[str] = None
     # Which paid services this person can use right now: their own key, or the
     # server's for an administrator (see app/apikeys.py). Pages hide or explain
     # a feature that needs one they don't have.
