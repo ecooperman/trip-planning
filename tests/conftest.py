@@ -66,6 +66,7 @@ def _nothing_leaves_the_machine(monkeypatch):
     ):
         monkeypatch.setattr(shared_settings, name, None)
     monkeypatch.setattr(config, "INVITES_PER_USER", 5)
+    monkeypatch.setattr(config, "PLANS_SERVICE_TOKEN", None)
     monkeypatch.setattr(shared_settings, "ACCESS_SEAT_CAP", 50)
 
     def refuse(*args, **kwargs):

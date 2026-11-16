@@ -128,3 +128,50 @@ def test_approving_an_invite_never_touches_cloudflare_when_signing_in_through_th
     invite = alice.post("/api/app-invites", {"email": "newbie@example.com"}).json()
     resp = admin.post(f"/api/admin/invites/{invite['id']}/approve")
     assert resp.status_code == 200 and resp.json()["status"] == "approved"
+
+
+# --- reading plans from the (private) plans app -------------------------------------------------------------
+
+
+def test_reads_from_the_plans_app_carry_the_service_token_when_one_is_set(admin, monkeypatch):
+    from app import config
+
+    seen = {}
+
+    class Reply:
+        ok = True
+        status_code = 200
+
+        def json(self):
+            return []
+
+    def fake_get(url, params=None, headers=None, timeout=None):
+        seen["url"], seen["headers"] = url, headers
+        return Reply()
+
+    import requests
+
+    monkeypatch.setattr(requests, "get", fake_get)
+    monkeypatch.setattr(config, "PLANS_SERVICE_TOKEN", "plans-secret")
+    assert admin.get("/api/plan-links/locations").status_code == 200
+    assert seen["url"].endswith("/api/locations") and seen["headers"] == {"X-Service-Token": "plans-secret"}
+
+
+def test_without_a_token_configured_no_header_is_sent(admin, monkeypatch):
+    from app import config
+
+    seen = {}
+
+    class Reply:
+        ok = True
+        status_code = 200
+
+        def json(self):
+            return []
+
+    import requests
+
+    monkeypatch.setattr(requests, "get", lambda url, params=None, headers=None, timeout=None: seen.update(headers=headers) or Reply())
+    monkeypatch.setattr(config, "PLANS_SERVICE_TOKEN", None)
+    admin.get("/api/plan-links/locations")
+    assert seen["headers"] == {}

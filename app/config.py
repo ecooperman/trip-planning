@@ -38,6 +38,11 @@ JINA_API_KEY = os.environ.get("JINA_API_KEY")
 # follows back to a plan.
 PLANS_API_BASE = os.environ.get("PLANS_API_BASE", "http://127.0.0.1:8020")
 PLANS_PUBLIC_URL = "https://plans.evancooperman.com" if ENV == "production" else "http://127.0.0.1:8020"
+# The plans app is private to its administrators, so these direct reads prove themselves with a shared secret
+# sent as X-Service-Token (the same value as the plans app's PLANS_SERVICE_TOKEN, set once in
+# /etc/personal-apps/shared.env - see DEPLOYMENT.md). It only allows three read-only calls; unset, the header
+# is simply not sent and the plans app refuses the call.
+PLANS_SERVICE_TOKEN = os.environ.get("PLANS_SERVICE_TOKEN") or None
 
 # --- who is signed in (see app/auth.py) -------------------------------------
 # Cloudflare Access authenticates everyone before a request reaches the app, and

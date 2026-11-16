@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 from .. import crud, models, schemas
 from ..access import check_role
 from ..auth import admin_or_service, user_or_service
+from .. import config
 from ..config import PLANS_API_BASE, PLANS_PUBLIC_URL
 from ..deps import get_db
 
@@ -31,7 +32,8 @@ router = APIRouter(prefix="/api/plan-links", tags=["plan-links"])
 
 def _plans_get(path: str, params: Optional[dict] = None):
     try:
-        resp = requests.get(f"{PLANS_API_BASE}{path}", params=params, timeout=5)
+        headers = {"X-Service-Token": config.PLANS_SERVICE_TOKEN} if config.PLANS_SERVICE_TOKEN else {}
+        resp = requests.get(f"{PLANS_API_BASE}{path}", params=params, headers=headers, timeout=5)
     except requests.RequestException as exc:
         raise HTTPException(status_code=502, detail=f"Couldn't reach the plans app: {exc}")
     if resp.status_code == 404:
