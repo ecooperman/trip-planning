@@ -114,3 +114,17 @@ def test_no_route_answers_with_data_when_nobody_is_signed_in(client, verify_only
         if resp.status_code != 302:
             answered.append(("GET", page, resp.status_code))
     assert not answered, f"answered without a sign-in: {answered}"
+
+
+def test_approving_an_invite_never_touches_cloudflare_when_signing_in_through_the_front_door(alice, admin, monkeypatch):
+    """Cloudflare is configured here (and any call to it fails the test, see conftest), yet approval goes through:
+    with the shared front door in use there is no Cloudflare gate to let anyone through, and no seat cap."""
+    monkeypatch.setattr(settings, "CF_API_TOKEN", "token")
+    monkeypatch.setattr(settings, "CF_ACCOUNT_ID", "acct")
+    monkeypatch.setattr(settings, "CF_INVITEES_GROUP_ID", "group")
+    monkeypatch.setattr(settings, "ACCESS_SEAT_CAP", 0)  # through Cloudflare even the first approval would be refused
+    monkeypatch.setattr(settings, "OIDC_ISSUER", "https://login.example.com")
+    monkeypatch.setattr(settings, "OIDC_LOGIN_URL", "https://dashboard.example.org/auth/login")
+    invite = alice.post("/api/app-invites", {"email": "newbie@example.com"}).json()
+    resp = admin.post(f"/api/admin/invites/{invite['id']}/approve")
+    assert resp.status_code == 200 and resp.json()["status"] == "approved"
