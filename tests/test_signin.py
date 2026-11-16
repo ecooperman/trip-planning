@@ -175,3 +175,38 @@ def test_without_a_token_configured_no_header_is_sent(admin, monkeypatch):
     monkeypatch.setattr(config, "PLANS_SERVICE_TOKEN", None)
     admin.get("/api/plan-links/locations")
     assert seen["headers"] == {}
+
+
+# --- cross-app request forgery -------------------------------------------------------------------------------------------
+
+
+def test_every_route_that_changes_something_refuses_a_request_from_another_app_or_site(client):
+    """The sign-in cookie covers every subdomain and subdomains are the same site, so a page on another app could make a
+    visitor's browser change things here. The browser marks such a request (Sec-Fetch-Site), and every route that
+    changes anything must refuse it, whatever the cookie says (shared_python.csrf)."""
+    import re
+
+    from app.main import app
+
+    tried = 0
+    for shown, operations in app.openapi()["paths"].items():
+        path = re.sub(r"\{[^}]+\}", "1", shown)
+        for method in operations:
+            if method.upper() not in ("POST", "PUT", "PATCH", "DELETE"):
+                continue
+            for site in ("same-site", "cross-site"):
+                resp = client.request(method.upper(), path, json={}, headers={"Sec-Fetch-Site": site, "Origin": "https://lists.example.org"})
+                assert resp.status_code == 403 and "didn't come from this app" in resp.text, (method, shown, site, resp.status_code)
+                tried += 1
+    assert tried > 4  # guards against the loop silently covering nothing
+
+
+def test_a_change_from_the_apps_own_page_still_goes_through_the_guard(client):
+    from app.main import app
+
+    for shown, operations in app.openapi()["paths"].items():
+        if "post" in operations and "{" not in shown:
+            resp = client.post(shown, json={}, headers={"Sec-Fetch-Site": "same-origin"})
+            assert "didn't come from this app" not in resp.text  # 422, 404, 200... but never the guard's refusal
+            return
+    pytest.fail("no plain POST route found")
