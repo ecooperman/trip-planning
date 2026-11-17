@@ -92,6 +92,8 @@ def _render(name: str, admin_only: bool = False):
             {
                 "shared_assets_base": SHARED_ASSETS_BASE, "heading": heading, "message": message, "email": email,
                 "logout_url": oidc_login.logout_url(request) or "/cdn-cgi/access/logout",
+            # Someone who never had an account can ask for one from the dashboard (not someone whose access was removed).
+            "dashboard_url": oidc_login.dashboard_url() if problem == "none" else None,
             },
             status_code=403,
         )

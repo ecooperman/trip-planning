@@ -21,7 +21,13 @@
       <p>{{ message }}</p>
       <p class="field-hint">Signed in as {{ email }}. If that's the wrong address, log out and sign in with the right one.</p>
       <p><a class="secondary-btn" href="{{ logout_url }}">Log out</a></p>
+      {% if dashboard_url %}
+      <p>You can ask for access from your dashboard; an administrator will see your request.</p>
+      <p><a class="secondary-btn" href="{{ dashboard_url }}" data-btn-icon="unlock">Ask for access</a></p>
+      {% endif %}
     </section>
   </main>
+  <script src="{{ shared_assets_base }}/theme.js"></script>
+  <script src="{{ shared_assets_base }}/icons.js"></script>
 </body>
 </html>
