@@ -5,7 +5,35 @@ on:
     branches: [main]
 
 jobs:
+  # A red test suite stops the deploy: the "deploy" job below only runs if this one passes.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: trip-planning
+      # The app installs shared-python from the folder next to it ("-e ../shared-python" in requirements.txt),
+      # so it is checked out the same way here. If shared-python is a private repo, add a read-only access
+      # token for it as the secret SHARED_PYTHON_TOKEN (see DEPLOYMENT.md, "Tests before every deploy").
+      - uses: actions/checkout@v4
+        with:
+          repository: ecooperman/shared-python
+          path: shared-python
+          token: ${{ secrets.SHARED_PYTHON_TOKEN || github.token }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        working-directory: trip-planning
+        run: |
+          pip install -r requirements.txt
+          if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
+      - name: Test
+        working-directory: trip-planning
+        run: pytest -q
+
   deploy:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - name: Deploy to Digital Ocean droplet
@@ -16,6 +44,22 @@ jobs:
           key: ${{ secrets.DO_SSH_KEY }}
           script: |
             set -e
+            # trip-planning imports shared-python from /opt/apps/shared-python, which shared-python's own deploy keeps
+            # current. If both were pushed together, wait (up to 3 minutes) for that deploy to land rather than
+            # restart this app on old shared code; stop with a clear message if it never does.
+            cd /opt/apps/shared-python
+            ready=""
+            for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
+              git fetch -q origin main || true
+              if [ "$(git rev-parse HEAD)" = "$(git rev-parse FETCH_HEAD)" ]; then ready=yes; break; fi
+              echo "shared-python on the droplet is not up to date yet (check $attempt of 12); waiting 15 seconds..."
+              sleep 15
+            done
+            if [ -z "$ready" ]; then
+              echo "ERROR: shared-python on the droplet is still behind GitHub's main, so trip-planning was NOT deployed."
+              echo "Check that shared-python's own deploy finished (a failed one needs fixing first), then re-run this workflow."
+              exit 1
+            fi
             cd /opt/apps/trip-planning
             git pull origin main
             source venv/bin/activate
