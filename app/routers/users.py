@@ -1,6 +1,6 @@
 from typing import List
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from shared_python import directory
 from sqlalchemy.orm import Session
 
@@ -34,12 +34,12 @@ def list_users(admin: models.User = Depends(require_admin), db: Session = Depend
     return crud.get_users_overview(db)
 
 
-@router.get("/suggestions", response_model=List[str])
+@router.get("/suggestions", response_model=List[dict])
 def suggestions(admin: models.User = Depends(require_admin), db: Session = Depends(get_db)):
-    """Addresses to suggest in the Add box: everyone with an account in any of the apps, minus people who already have
+    """People to suggest in the Add box ({email, name}): everyone with an account in any of the apps, minus people who already have
     access here (shared_python.directory). Administrators only - it says who else uses the apps."""
     have = {u.email.lower() for u in db.query(models.User).filter(models.User.status == models.USER_ACTIVE)}
-    return [email for email in directory.known_emails() if email not in have]
+    return [person for person in directory.known_people() if person["email"] not in have]
 
 
 @router.post("", response_model=schemas.AdminUser)
@@ -48,6 +48,7 @@ def add_user(
     background: BackgroundTasks,
     admin: models.User = Depends(require_admin),
     db: Session = Depends(get_db),
+    notify_them: bool = Query(True, alias="notify"),
 ):
     """Let someone into the app without anyone having asked: they pass
     Cloudflare's login gate, get an active account, and are emailed how to
@@ -58,7 +59,8 @@ def add_user(
         raise HTTPException(status_code=409, detail=f"{email} already has access.")
     let_through_gate(email)
     user = crud.enable_user(db, email)
-    background.add_task(notify.tell_let_in, email, admin.email)
+    if notify_them:  # the dashboard's Users page sends one email for all the apps instead
+        background.add_task(notify.tell_let_in, email, admin.email)
     return _overview_of(db, user.id)
 
 
