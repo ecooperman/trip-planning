@@ -1,6 +1,7 @@
 from typing import List
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from shared_python import directory
 from sqlalchemy.orm import Session
 
 from .. import crud, models, notify, schemas
@@ -31,6 +32,14 @@ def _person(db: Session, user_id: int) -> models.User:
 @router.get("", response_model=List[schemas.AdminUser])
 def list_users(admin: models.User = Depends(require_admin), db: Session = Depends(get_db)):
     return crud.get_users_overview(db)
+
+
+@router.get("/suggestions", response_model=List[str])
+def suggestions(admin: models.User = Depends(require_admin), db: Session = Depends(get_db)):
+    """Addresses to suggest in the Add box: everyone with an account in any of the apps, minus people who already have
+    access here (shared_python.directory). Administrators only - it says who else uses the apps."""
+    have = {u.email.lower() for u in db.query(models.User).filter(models.User.status == models.USER_ACTIVE)}
+    return [email for email in directory.known_emails() if email not in have]
 
 
 @router.post("", response_model=schemas.AdminUser)

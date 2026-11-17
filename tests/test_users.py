@@ -2,6 +2,8 @@
 (approving an invite or adding someone), not something anyone who passes
 Cloudflare's shared login gate gets by turning up. These cover the Users page's
 add / remove / restore / delete and what each leaves behind."""
+import sqlite3
+
 import pytest
 from sqlalchemy import text
 
@@ -382,3 +384,39 @@ def test_the_service_user_is_created_on_first_use_but_not_when_removed(client, a
     assert client.get("/api/trips", headers=headers).status_code == 403
     admin.post(f"{URL}/{account.id}/restore")
     assert client.get("/api/trips", headers=headers).status_code == 200
+
+
+def fake_apps(tmp_path, monkeypatch, **emails_by_folder):
+    """Other apps' databases next to this one, each with the given people (see shared_python.directory)."""
+    for folder, (filename, emails) in emails_by_folder.items():
+        (tmp_path / folder).mkdir(exist_ok=True)
+        connection = sqlite3.connect(tmp_path / folder / filename)
+        connection.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT NOT NULL)")
+        connection.executemany("INSERT INTO users (email) VALUES (?)", [(e,) for e in emails])
+        connection.commit()
+        connection.close()
+    monkeypatch.setenv("PEOPLE_APPS_DIR", str(tmp_path))
+
+
+def test_suggestions_are_everyone_from_any_app_minus_people_already_here(admin, alice, tmp_path, monkeypatch):
+    fake_apps(
+        tmp_path, monkeypatch,
+        **{"finances": ("finances.db", ["Zed@example.com", alice.email]), "time-management": ("tasks.db", ["amy@example.com"])},
+    )
+    resp = admin.get(f"{URL}/suggestions")
+    assert resp.status_code == 200
+    # alice and the administrator already have access here, so they are not offered again; the rest are lowercased and sorted
+    assert resp.json() == ["amy@example.com", "zed@example.com"]
+
+
+def test_suggestions_say_who_uses_the_apps_so_only_the_administrator_gets_them(alice, tmp_path, monkeypatch):
+    fake_apps(tmp_path, monkeypatch, finances=("finances.db", ["secret-person@example.com"]))
+    resp = alice.get(f"{URL}/suggestions")
+    assert resp.status_code == 403 and "secret-person" not in resp.text
+    assert alice.get("/api/me/people").json() == []  # the ordinary sharing box still shows only people alice dealt with
+
+
+def test_a_removed_person_is_offered_again_if_another_app_knows_them(admin, alice, tmp_path, monkeypatch):
+    fake_apps(tmp_path, monkeypatch, lists=("gifts.db", [alice.email]))
+    admin.post(f"{URL}/{user_id(admin, alice.email)}/revoke")
+    assert admin.get(f"{URL}/suggestions").json() == [alice.email]
