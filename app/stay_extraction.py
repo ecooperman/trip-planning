@@ -12,8 +12,10 @@ expected outcome to fix by hand, not a bug to chase out.
 import base64
 from typing import Optional
 
-import anthropic
+from shared_python.lazy import lazy_module
 from pydantic import BaseModel
+
+anthropic = lazy_module("anthropic")  # imported on first use: it is slow to load and most requests never call the AI
 
 
 # Not Opus: listing pages are long
@@ -80,7 +82,7 @@ class ExtractedStay(BaseModel):
         }
 
 
-def _client(api_key: str) -> anthropic.Anthropic:
+def _client(api_key: str) -> "anthropic.Anthropic":
     """The key is the caller's (see app/apikeys.py): their own, or the house
     key for an administrator. It is never read from the environment here."""
     return anthropic.Anthropic(api_key=api_key)
