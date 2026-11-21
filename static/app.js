@@ -3,12 +3,14 @@
 function tripCardElement(trip, { expanded = false } = {}) {
   const card = Global.el("div", { class: "item-card" + (expanded ? " expanded" : "") + (trip.archived ? " archived" : ""), "data-id": trip.id });
 
-  // A <div role="button"> rather than a real <button> - the nested Agenda
-  // link below is interactive content, which is invalid (and flaky for
-  // keyboard/screen-reader nav) inside a real <button>. tabindex + the
-  // keydown handler keep it fully keyboard-operable despite not being a
-  // native button.
-  const summary = Global.el("div", { class: "item-summary", role: "button", tabindex: "0", "aria-expanded": String(expanded) });
+  // The whole row opens the trip: a transparent link stretched over it (shared
+  // `.row-link`), so keyboard focus, middle/cmd-click and "open in new tab" work
+  // natively. The agenda icon link and the arrow carry `row-above` and keep their
+  // own jobs; the arrow is the only thing that expands the card.
+  const summary = Global.el("div", { class: "item-summary row-host" });
+  summary.appendChild(
+    Global.el("a", { class: "row-link", href: `trip.html?id=${trip.id}`, "aria-label": `Open trip "${trip.location}"`, draggable: "false" })
+  );
   summary.appendChild(Global.el("span", { class: "item-summary-title", text: trip.location }));
 
   const dateLabel = formatDateRange(trip.start_date, trip.end_date);
@@ -22,26 +24,23 @@ function tripCardElement(trip, { expanded = false } = {}) {
 
   const agendaLink = Global.el("a", {
     href: `agenda.html?id=${trip.id}`,
-    class: "item-summary-icon-link",
+    class: "item-summary-icon-link row-above",
     "aria-label": `Open agenda for ${trip.location}`,
   }, [Global.el("span", { class: "btn-icon", "data-icon": "calendar", "aria-hidden": "true" })]);
-  agendaLink.addEventListener("click", (e) => e.stopPropagation());
   summary.appendChild(agendaLink);
 
-  summary.appendChild(Global.el("span", { class: "item-chevron", "aria-hidden": "true", text: "▸" }));
+  const toggleBtn = Global.el(
+    "button",
+    { type: "button", class: "row-chevron-btn row-above", "aria-label": `Show or hide details of ${trip.location}`, "aria-expanded": String(expanded) },
+    [Global.el("span", { class: "item-chevron", "aria-hidden": "true", text: "▸" })]
+  );
+  summary.appendChild(toggleBtn);
 
   const details = Global.el("div", { class: "item-details" + (expanded ? "" : " hidden") });
-  function toggle() {
+  toggleBtn.addEventListener("click", () => {
     const isExpanded = card.classList.toggle("expanded");
     details.classList.toggle("hidden", !isExpanded);
-    summary.setAttribute("aria-expanded", String(isExpanded));
-  }
-  summary.addEventListener("click", toggle);
-  summary.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      toggle();
-    }
+    toggleBtn.setAttribute("aria-expanded", String(isExpanded));
   });
 
   card.append(summary, details);
