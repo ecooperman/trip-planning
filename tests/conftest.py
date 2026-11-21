@@ -53,6 +53,14 @@ def clean_db():
 
 
 @pytest.fixture(autouse=True)
+def forget_last_seen():
+    """Who was recorded as last seen is remembered in memory for an hour; the tests empty the database between them but keep ids."""
+    from app import auth
+
+    auth.seen.reset()
+
+
+@pytest.fixture(autouse=True)
 def _nothing_leaves_the_machine(monkeypatch):
     """Whatever is set in the developer's shell (a real Cloudflare token, a
     real ntfy topic), a test must never reach out with it: the settings are

@@ -24,6 +24,7 @@ from .routers import (
     places,
     plan_links,
     profile,
+    stats,
     stay_compare,
     stays,
     travel,
@@ -146,6 +147,7 @@ app.include_router(categories.router)
 app.include_router(plan_links.router)
 app.include_router(distance.router)
 app.include_router(users.router)
+app.include_router(stats.router)
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
 

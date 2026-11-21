@@ -12,9 +12,11 @@ import logging
 
 from fastapi import Depends, HTTPException, Request
 from shared_python import auth as cloudflare_access
+from shared_python import usage
 from sqlalchemy.orm import Session
 
 from . import config, crud, models
+from .database import SessionLocal
 from .deps import get_db
 
 log = logging.getLogger(__name__)
@@ -41,12 +43,18 @@ def signed_in_email(request: Request) -> str:
     return email
 
 
+# When each person was last here, for the dashboard's stats pages (shared_python.usage): at most one small write an hour per person.
+seen = usage.LastSeen(lambda: SessionLocal())
+
+
 def current_user(request: Request, db: Session = Depends(get_db)) -> models.User:
     """Whoever is asking, who must also have been enabled in this app: getting
     through Cloudflare's login gate (shared with other apps) is not enough."""
     user, problem = crud.user_for_request(db, signed_in_email(request))
     if user is None:
         raise HTTPException(status_code=403, detail=NO_ACCESS[problem])
+    if seen.due(user.id):
+        seen.record(user.id)  # never raises
     return user
 
 

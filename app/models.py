@@ -68,6 +68,9 @@ class User(Base):
     email = Column(String, unique=True, nullable=False)
     status = Column(String, nullable=False, default=USER_ACTIVE, server_default=USER_ACTIVE)
     created_at = Column(DateTime, default=datetime.utcnow)
+    # When they last used the app and on how many different (UTC) days: counts only, kept by shared_python.usage for the dashboard's stats pages.
+    last_seen_at = Column(DateTime, nullable=True)
+    active_days = Column(Integer, nullable=False, default=0, server_default="0")
 
 
 class TripMember(Base):
