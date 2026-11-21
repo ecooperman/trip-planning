@@ -12,7 +12,7 @@ import logging
 
 from fastapi import Depends, HTTPException, Request
 from shared_python import auth as cloudflare_access
-from shared_python import usage
+from shared_python import probe, usage
 from sqlalchemy.orm import Session
 
 from . import config, crud, models
@@ -53,7 +53,7 @@ def current_user(request: Request, db: Session = Depends(get_db)) -> models.User
     user, problem = crud.user_for_request(db, signed_in_email(request))
     if user is None:
         raise HTTPException(status_code=403, detail=NO_ACCESS[problem])
-    if seen.due(user.id):
+    if not probe.is_probe(request) and seen.due(user.id):  # the dashboard checking for an account is not the person being here
         seen.record(user.id)  # never raises
     return user
 

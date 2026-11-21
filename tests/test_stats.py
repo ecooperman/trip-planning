@@ -26,3 +26,15 @@ def test_using_the_app_notes_when_a_person_was_last_seen(alice, db):
     assert alice.get("/api/me").status_code == 200
     user = db.query(models.User).filter(models.User.email == "alice@example.com").one()
     assert user.active_days == 1 and user.last_seen_at is not None
+
+
+def test_the_dashboards_account_check_is_not_the_person_being_here(alice, db):
+    plain = alice.headers
+    alice.headers = {**plain, "X-Brassworks-Probe": "1"}
+    assert alice.get("/api/me").status_code == 200
+    alice.headers = plain
+    user = db.query(models.User).filter(models.User.email == "alice@example.com").one()
+    assert user.last_seen_at is None and not user.active_days  # the dashboard looking is not use
+    assert alice.get("/api/me").status_code == 200
+    db.expire_all()
+    assert db.query(models.User).filter(models.User.email == "alice@example.com").one().active_days == 1  # but the person is

@@ -854,3 +854,9 @@ class DogCareBooking(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     trip = relationship("Trip", back_populates="dog_care_bookings")
+
+
+# Tell the dashboard when someone's access to this app changes (shared_python.access_events), so every menu's list of apps follows.
+from shared_python import access_events  # noqa: E402
+
+access_events.install(User)
