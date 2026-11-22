@@ -6,11 +6,11 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from shared_python import auth as shared_auth
-from shared_python import csrf, oidc_login
+from shared_python import csrf, feedback_relay, oidc_login
 from sqlalchemy.orm import Session
 
 from . import crud
-from .auth import NO_ACCESS, is_admin, signed_in_email
+from .auth import NO_ACCESS, current_user, is_admin, signed_in_email
 from .config import DEV_USER_EMAIL, SHARED_ASSETS_BASE
 from .deps import get_db
 from .routers import (
@@ -148,6 +148,7 @@ app.include_router(plan_links.router)
 app.include_router(distance.router)
 app.include_router(users.router)
 app.include_router(stats.router)
+feedback_relay.install(app, "trips", dependencies=[Depends(current_user)])  # Send feedback in the menu, passed on to the dashboard's inbox
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
 
