@@ -223,30 +223,14 @@ class ApiKeyStatus(BaseModel):
     optional: bool
     get_url: str
     has_own_key: bool
-    own_key_readable: bool = True
     last4: Optional[str] = None
-    added_at: Optional[datetime] = None
+    added_at: Optional[str] = None
     using_house_key: bool = False
     usable: bool = False
 
 
 class ApiKeyList(BaseModel):
-    # False when the server has no KEY_ENCRYPTION_SECRET (production only),
-    # so keys can't be saved yet.
-    can_save: bool
     keys: List[ApiKeyStatus]
-
-
-class ApiKeyIn(BaseModel):
-    key: str = Field(min_length=1, max_length=2000)
-
-
-class ApiKeySaved(BaseModel):
-    key: ApiKeyStatus
-    # True = the service accepted it; False never reaches here (a refused key
-    # isn't saved); None = couldn't be checked right now, saved unverified.
-    verified: Optional[bool] = None
-    note: str = ""
 
 
 class MemberUpdate(BaseModel):

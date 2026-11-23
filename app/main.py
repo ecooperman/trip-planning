@@ -6,7 +6,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from shared_python import auth as shared_auth
-from shared_python import csrf, feedback_relay, oidc_login
+from shared_python import csrf, feedback_relay, oidc_login, user_keys
 from sqlalchemy.orm import Session
 
 from . import crud
@@ -56,6 +56,7 @@ def _get_git_sha() -> str:
 GIT_SHA = _get_git_sha()
 
 app = FastAPI(title="Trip Planning")
+user_keys.install(app)  # remembers the request's sign-in cookie, so a saved key can be fetched from the dashboard for this request only
 csrf.install(app)  # a change must come from this app's own pages, not another app or site (shared_python.csrf)
 shared_auth.warm_up_on_start(app)  # fetch the sign-in keys in the background at start-up, so nobody's first page waits for them
 templates = Jinja2Templates(directory="templates")

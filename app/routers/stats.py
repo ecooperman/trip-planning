@@ -18,5 +18,4 @@ def stats(db: Session = Depends(get_db)):
         "activities": usage.per_user(db, models.Activity.owner_id, models.Activity.created_at),
         "places": usage.per_user(db, models.Place.owner_id, models.Place.created_at),
         "trips shared with them": usage.per_user(db, models.TripMember.user_id, None, models.TripMember.role != models.ROLE_OWNER),
-        "own API keys saved": usage.per_user(db, models.UserApiKey.user_id),
     })

@@ -1,34 +1,22 @@
-"""People's own API keys for the paid services the app can call.
+"""The paid services the app can call, and whose key a call uses.
 
-Anthropic (reading stay listings and screenshots), Google Maps (distances) and
-Jina (an optional fallback for pages that come back thin) cost money per use.
-Instead of metering strangers on the owner's bill, each person brings their own
-key. Which key a call uses:
+Anthropic (reading stay listings and screenshots), Google Maps (distances) and Jina (an optional fallback for pages that come back thin) cost
+money per use. Instead of metering strangers on the owner's bill, each person brings their own key, which they save ONCE on their Profile page on
+the dashboard (dashboard/app/keys.py) and which every app then uses (shared_python.user_keys). This app keeps no keys of its own. Which key a
+call uses:
 
-1. the signed-in person's own saved key, if they have one;
-2. otherwise the server's own ("house") key from the environment - but ONLY for
-   an administrator. Anyone else without a key of their own just doesn't have
-   that feature, and is told how to turn it on (see require()).
-
-Saved keys are encrypted with KEY_ENCRYPTION_SECRET, never sent back to the
-browser (only the last four characters are kept in the clear), and never logged
-- see shared_python/keystore.py, which does the encrypting and its limits.
+1. the signed-in person's own saved key, if they have one (fetched from the dashboard for this request, held in memory only);
+2. otherwise the server's own ("house") key from the environment - but ONLY for an administrator. Anyone else without a key of their own just
+   doesn't have that feature, and is told how to turn it on (see require()).
 """
-import logging
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional
 
-import requests
 from fastapi import HTTPException
-from shared_python import keystore
-from shared_python.keystore import KeyStorageNotConfigured, clean, scrub, storage_available  # noqa: F401 (the routes use these)
+from shared_python import user_keys
 from sqlalchemy.orm import Session
 
 from . import config, models
-
-log = logging.getLogger(__name__)
-
-TIMEOUT = 10
 
 
 @dataclass(frozen=True)
@@ -85,40 +73,23 @@ PROVIDERS: Dict[str, Provider] = {
 }
 
 
-# --- saving, reading, removing -----------------------------------------------
+# --- whose key a call uses ----------------------------------------------------
 
 
-def save(db: Session, user: models.User, provider: str, raw_key: str) -> models.UserApiKey:
-    key = clean(raw_key)
-    token = keystore.encrypt(key)
-    row = db.query(models.UserApiKey).filter_by(user_id=user.id, provider=provider).first()
-    if row is None:
-        row = models.UserApiKey(user_id=user.id, provider=provider, encrypted_key=token, last4=keystore.last4(key))
-        db.add(row)
-    else:
-        row.encrypted_key, row.last4 = token, keystore.last4(key)
-    db.commit()
-    db.refresh(row)
-    return row
+def _own_key(user: models.User, provider: str) -> Optional[str]:
+    """The key this person saved on the dashboard, or None. `user` is the signed-in caller: the key is fetched with THEIR sign-in cookie for
+    this request, so it can only ever be theirs (tests replace this function to give each test person a key)."""
+    return user_keys.fetch(provider)
 
 
-def remove(db: Session, user: models.User, provider: str) -> bool:
-    row = db.query(models.UserApiKey).filter_by(user_id=user.id, provider=provider).first()
-    if row is None:
-        return False
-    db.delete(row)
-    db.commit()
-    return True
-
-
-def _row(db: Session, user: models.User, provider: str) -> Optional[models.UserApiKey]:
-    return db.query(models.UserApiKey).filter_by(user_id=user.id, provider=provider).first()
-
-
-def _decrypt(row: models.UserApiKey) -> Optional[str]:
-    """The saved key, or None if it can't be read (the secret changed, or the
-    server has none)."""
-    return keystore.decrypt(row.encrypted_key, row.provider)
+def _saved(user: models.User) -> dict:
+    """{provider: {"last4", "added_at"}} for what the caller saved (never a key). Only for showing what is set (the pages hide or explain a
+    feature): if the dashboard cannot be reached this says nothing is saved, rather than failing the page, which does not need a key.
+    (Actually using a key, below, does fail with a sentence when the dashboard is down: that is a real problem for the call.)"""
+    try:
+        return user_keys.status()
+    except HTTPException:
+        return {}
 
 
 def can_use_house_key(user: models.User) -> bool:
@@ -128,11 +99,9 @@ def can_use_house_key(user: models.User) -> bool:
 
 def resolve(db: Session, user: models.User, provider: str) -> Optional[str]:
     """The key to use for this person, or None (see the module docstring)."""
-    row = _row(db, user, provider)
-    if row is not None:
-        own = _decrypt(row)
-        if own:
-            return own
+    own = _own_key(user, provider)
+    if own:
+        return own
     if can_use_house_key(user):
         return PROVIDERS[provider].house() or None
     return None
@@ -146,22 +115,24 @@ def require(db: Session, user: models.User, provider: str) -> str:
     p = PROVIDERS[provider]
     raise HTTPException(
         status_code=400,
-        detail=f"{p.feature} needs your own {p.label} key - add it on your Profile page.",
+        detail=f"{p.feature} needs your own {p.label} key - add it on your Brassworks profile (the dashboard's Your profile page).",
     )
 
 
 def available(db: Session, user: models.User) -> Dict[str, bool]:
     """Which services this person can use right now (own key, or the house key
     if they're an administrator) - for the pages to show or hide features."""
-    return {pid: resolve(db, user, pid) is not None for pid in PROVIDERS}
+    saved = _saved(user)
+    house_ok = can_use_house_key(user)
+    return {pid: pid in saved or bool(house_ok and p.house()) for pid, p in PROVIDERS.items()}
 
 
 def status(db: Session, user: models.User) -> List[dict]:
-    out = []
+    saved = _saved(user)
     house_ok = can_use_house_key(user)
+    out = []
     for p in PROVIDERS.values():
-        row = _row(db, user, p.id)
-        readable = row is not None and _decrypt(row) is not None
+        mine = saved.get(p.id)
         house_key = bool(house_ok and p.house())
         out.append(
             {
@@ -171,73 +142,11 @@ def status(db: Session, user: models.User) -> List[dict]:
                 "description": p.description,
                 "optional": p.optional,
                 "get_url": p.get_url,
-                "has_own_key": row is not None,
-                "own_key_readable": readable if row is not None else True,
-                "last4": row.last4 if row is not None else None,
-                "added_at": row.updated_at if row is not None else None,
-                "using_house_key": house_key and not readable,
-                "usable": readable or house_key,
+                "has_own_key": mine is not None,
+                "last4": mine["last4"] if mine else None,
+                "added_at": mine["added_at"] if mine else None,
+                "using_house_key": house_key and mine is None,
+                "usable": mine is not None or house_key,
             }
         )
     return out
-
-
-# --- checking a key before it's saved ---------------------------------------
-#
-# One tiny real call per provider, so a typo (or a Google key without the
-# Distance Matrix API enabled) is caught while the person is still on the page.
-# Returns (True, "") if the provider accepted it, (False, why) if it refused it,
-# or (None, why) if we couldn't tell (the service was unreachable) - in which
-# case the key is saved anyway and the person is told it wasn't verified.
-
-
-def _verify_anthropic(key: str) -> Tuple[Optional[bool], str]:
-    r = requests.get(
-        "https://api.anthropic.com/v1/models",
-        params={"limit": 1},
-        headers={"x-api-key": key, "anthropic-version": "2023-06-01"},
-        timeout=TIMEOUT,
-    )
-    if r.status_code in (401, 403):
-        return False, "Anthropic didn't accept that key"
-    if r.ok:
-        return True, ""
-    return None, f"Anthropic answered with an error ({r.status_code})"
-
-
-def _verify_google(key: str) -> Tuple[Optional[bool], str]:
-    r = requests.get(
-        "https://maps.googleapis.com/maps/api/distancematrix/json",
-        params={"origins": "Boston, MA", "destinations": "Cambridge, MA", "mode": "walking", "key": key},
-        timeout=TIMEOUT,
-    )
-    data = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
-    result = data.get("status")
-    if result == "OK":
-        return True, ""
-    if result in ("REQUEST_DENIED", "INVALID_REQUEST"):
-        return False, "Google refused that key: " + scrub(data.get("error_message") or result, key)
-    if result == "OVER_QUERY_LIMIT":
-        return True, ""  # a real key that is simply out of quota right now
-    return None, f"Google answered with an unexpected status ({result or r.status_code})"
-
-
-def _verify_jina(key: str) -> Tuple[Optional[bool], str]:
-    r = requests.get("https://r.jina.ai/https://example.com", headers={"Authorization": f"Bearer {key}"}, timeout=TIMEOUT)
-    if r.status_code in (401, 403):
-        return False, "Jina didn't accept that key"
-    if r.ok:
-        return True, ""
-    return None, f"Jina answered with an error ({r.status_code})"
-
-
-_VERIFIERS = {"anthropic": _verify_anthropic, "google_maps": _verify_google, "jina": _verify_jina}
-
-
-def verify(provider: str, key: str) -> Tuple[Optional[bool], str]:
-    try:
-        return _VERIFIERS[provider](key)
-    except (requests.RequestException, ValueError) as exc:
-        # The type only: a library's message can echo the URL, and a URL can carry the key.
-        log.warning("Checking a %s key failed: %s", provider, type(exc).__name__)
-        return None, f"Couldn't reach {PROVIDERS[provider].label} to check the key"

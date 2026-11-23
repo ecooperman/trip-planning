@@ -88,10 +88,8 @@ class TripMember(Base):
 
 
 class UserApiKey(Base):
-    """A person's own key for a paid service (Anthropic, Google Maps, Jina),
-    saved on their Profile page. Stored encrypted (app/apikeys.py) and never
-    sent back to the browser - only the last four characters are kept in the
-    clear so they can recognize which key it is."""
+    """LEGACY: a person's own key for a paid service, saved in this app before keys moved to the dashboard (2026-11-23; nobody had saved one).
+    Nothing reads or writes it any more; the table stays as a record (no destructive migration) and a person's rows still go with their data."""
 
     __tablename__ = "user_api_keys"
     __table_args__ = (UniqueConstraint("user_id", "provider", name="uq_user_api_keys_user_id_provider"),)
