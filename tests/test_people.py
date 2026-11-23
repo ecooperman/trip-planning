@@ -1,18 +1,9 @@
-"""The addresses suggested in the sharing box (GET /api/me/people): only people
-the signed-in person has already shared with or asked for - never everyone who
-has an account, which would leak who else uses the app."""
-import pytest
-
-from shared_python import cloudflare, notify
+"""The people suggested in the sharing box (GET /api/me/people): only an administrator gets any. Everyone else types the whole address,
+because suggestions would tell them who else uses the apps."""
+import sqlite3
 
 from tests.test_access import make_trip, share
-from tests.test_invites import ask
-
-
-@pytest.fixture(autouse=True)
-def _no_outside_calls(monkeypatch):
-    monkeypatch.setattr(cloudflare, "allow_email", lambda email: None)
-    monkeypatch.setattr(notify, "notify", lambda *a, **kw: None)
+from tests.test_users import fake_apps
 
 
 def people(person):
@@ -21,37 +12,21 @@ def people(person):
     return resp.json()
 
 
-def test_nobody_is_suggested_before_anything_is_shared(alice, bob):
+def test_an_ordinary_person_gets_no_suggestions_even_after_sharing(alice, bob, carol, tmp_path, monkeypatch):
+    fake_apps(tmp_path, monkeypatch, finances=("finances.db", ["someone@example.com", bob.email]))
     assert people(alice) == []
-    make_trip(alice)
-    assert people(alice) == []  # their own trip has no one else on it
-
-
-def test_people_on_a_trip_you_own_are_suggested_sorted_and_without_yourself(alice, bob, carol):
-    thing = make_trip(alice)
-    share(alice, thing["id"], carol, "view")
-    share(alice, thing["id"], bob, "edit")
-    assert people(alice) == sorted([bob.email, carol.email])
-
-
-def test_people_you_asked_for_are_suggested_unless_refused(alice, admin):
-    thing = make_trip(alice)
-    assert ask(alice, thing["id"], "Waiting@Example.com").status_code == 200
-    refused = ask(alice, thing["id"], "no@example.com").json()
-    assert admin.post(f"/api/admin/invites/{refused['id']}/decline").status_code == 200
-    assert people(alice) == ["waiting@example.com"]
-
-
-def test_what_others_shared_is_not_suggested_to_you(alice, bob, carol):
     thing = make_trip(alice)
     share(alice, thing["id"], bob, "edit")
-    share(alice, thing["id"], carol, "view")
-    # bob can see the trip (and so knows its owner), but carol is not his contact.
-    assert people(bob) == []
-    assert people(carol) == []
+    assert people(alice) == []  # nor people they now share with
+    assert people(bob) == [] and people(carol) == []
 
 
-def test_other_peoples_invites_are_not_suggested(alice, bob):
-    thing = make_trip(alice)
-    assert ask(alice, thing["id"], "private@example.com").status_code == 200
-    assert people(bob) == []
+def test_an_administrator_is_offered_everyone_with_their_names_but_not_themselves(admin, tmp_path, monkeypatch):
+    fake_apps(tmp_path, monkeypatch, finances=("finances.db", ["Ann@Example.com", "bob@example.com", admin.email]))
+    (tmp_path / "dashboard").mkdir()
+    connection = sqlite3.connect(tmp_path / "dashboard" / "people.db")
+    connection.execute("CREATE TABLE names (email TEXT PRIMARY KEY, first_name TEXT, last_name TEXT)")
+    connection.execute("INSERT INTO names VALUES ('ann@example.com', 'Ann', 'Lee')")
+    connection.commit()
+    connection.close()
+    assert people(admin) == [{"email": "ann@example.com", "name": "Ann Lee"}, {"email": "bob@example.com", "name": ""}]

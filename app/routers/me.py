@@ -1,7 +1,7 @@
 from typing import List
 
 from fastapi import APIRouter, Depends, Request
-from shared_python import oidc_login
+from shared_python import directory, oidc_login
 from sqlalchemy.orm import Session
 
 from .. import apikeys, crud, models, schemas
@@ -26,8 +26,12 @@ def get_me(request: Request, user: models.User = Depends(current_user), db: Sess
     )
 
 
-@router.get("/people", response_model=List[str])
-def get_people(user: models.User = Depends(current_user), db: Session = Depends(get_db)):
-    """Addresses to suggest in the sharing box: only people this person has
-    already shared with or asked for (see crud.known_people)."""
-    return crud.known_people(db, user)
+@router.get("/people", response_model=List[dict])
+def get_people(user: models.User = Depends(current_user)):
+    """People to suggest in the sharing box, as {email, name}: everyone with an account in any of the apps (the name is the one an
+    administrator saved, or ""), for an administrator only. An ordinary person gets nothing and types the whole address: suggestions would
+    otherwise tell them who else uses the apps (shared_python.directory)."""
+    if not is_admin(user):
+        return []
+    me = user.email.lower()
+    return [person for person in directory.known_people() if person["email"] != me]

@@ -14,7 +14,7 @@ const PLACES_API = `${API_BASE}/places`;
 // CATEGORIES_API/categories/categoriesById/loadCategoriesCache and
 // CITIES_API/cities/loadCitiesCache/cityInputElement all moved to
 // common.js - other pages (agenda.html, places.html) need the same
-// category cache, and index.html needs the same city datalist, so
+// category cache, and index.html needs the same city suggestions, so
 // common.js (the one file already shared by every page) is where they
 // live now.
 
@@ -520,9 +520,9 @@ function buildActivityEditPane(card, activity, { onChanged, onDeleted, onUnlink,
           body: JSON.stringify(payload),
         });
         Global.showMessage(`Saved "${updated.name}".`, "success");
-        // Fire-and-forget - picks up a newly-typed city for the shared
-        // datalist right away, without waiting on it before the card swap
-        // below (a stale datalist for a few moments isn't worth blocking on).
+        // Fire-and-forget - picks up a newly-typed city for the city
+        // suggestions right away, without waiting on it before the card swap
+        // below (a stale list for a few moments isn't worth blocking on).
         loadCitiesCache();
         if (onChanged) onChanged(updated);
         card.replaceWith(activityCardElement(updated, { expanded: true, showTripBadge, onChanged, onDeleted, onUnlink }));

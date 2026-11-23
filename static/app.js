@@ -213,7 +213,7 @@ function buildTripEditPane(card, trip) {
           }),
         });
         Global.showMessage(`Saved "${location}".`, "success");
-        loadCitiesCache(); // fire-and-forget - picks up a newly-typed city for the shared datalist
+        loadCitiesCache(); // fire-and-forget - picks up a newly-typed city for the city suggestions
         card.remove();
         placeTripCard(updated, { expanded: true });
       } catch (err) {
@@ -328,11 +328,8 @@ function initAddTripForm() {
 }
 
 async function init() {
-  // Loaded before initAddTripForm/loadTrips build any city <input> -
-  // otherwise the datalist those inputs reference wouldn't exist yet (not
-  // strictly broken - the browser resolves list="..." dynamically once the
-  // <datalist> shows up - but this way suggestions are ready immediately
-  // rather than only after this fetch resolves).
+  // Loaded before initAddTripForm/loadTrips build any city <input>, so
+  // the suggestions are ready the first time one is opened.
   await loadCitiesCache();
   initAddTripForm();
   await loadTrips();
