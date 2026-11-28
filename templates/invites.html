@@ -3,7 +3,7 @@
 <head>
   {% include "shared_head.html" %}
   <title>Invites - Trip Planning</title>
-  <link rel="stylesheet" href="/style.css" />
+  <link rel="stylesheet" href="{{ asset('style.css') }}" />
 </head>
 <body>
   <header class="app-header">
@@ -33,10 +33,10 @@
     </section>
   </main>
 
-  <script src="{{ shared_assets_base }}/theme.js"></script>
-  <script src="{{ shared_assets_base }}/icons.js"></script>
-  <script src="{{ shared_assets_base }}/app-invites.js"></script>
-  <script src="/nav.js"></script>
-  <script src="/invites.js"></script>
+  <script src="{{ shared_asset('theme.js') }}"></script>
+  <script src="{{ shared_asset('icons.js') }}"></script>
+  <script src="{{ shared_asset('app-invites.js') }}"></script>
+  <script src="{{ asset('nav.js') }}"></script>
+  <script src="{{ asset('invites.js') }}"></script>
 </body>
 </html>

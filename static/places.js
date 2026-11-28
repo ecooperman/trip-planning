@@ -499,8 +499,7 @@ function initAddPlaceForm() {
 }
 
 async function init() {
-  await loadCategoriesCache();
-  await loadCitiesCache();
+  await Promise.all([loadCategoriesCache(), loadCitiesCache()]); // independent, so asked for at once
   initAddPlaceForm();
   initCityFilter();
   initCategoryFilter();

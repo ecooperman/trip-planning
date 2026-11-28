@@ -328,11 +328,13 @@ function initAddTripForm() {
 }
 
 async function init() {
-  // Loaded before initAddTripForm/loadTrips build any city <input>, so
-  // the suggestions are ready the first time one is opened.
+  // The cities are loaded before initAddTripForm builds any city <input>, so the suggestions are ready the first time one is opened -
+  // but the trips list does not need them, so it is asked for at the same moment instead of after.
+  const trips = loadTrips();
+  trips.catch(() => {}); // reported where it is awaited below
   await loadCitiesCache();
   initAddTripForm();
-  await loadTrips();
+  await trips;
 }
 
 init().catch((err) => Global.showMessage(err.message, "error"));

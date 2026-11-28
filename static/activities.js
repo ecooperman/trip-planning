@@ -532,14 +532,13 @@ if (prefillParam || editIdParam) {
 }
 
 async function init() {
-  await loadUserCaps(); // the distance tool needs the person's own Google Maps key
   // Categories/places have to be loaded before anything that builds a
   // category <select> or place-link <select> (the add form below, and
   // every activity card/edit-pane) - otherwise those selects would render
   // with no options and never pick up ones that show up after the fact.
-  await loadCategoriesCache();
-  await loadPlacesCache();
-  await loadCitiesCache();
+  // They do not depend on each other, so all four are asked for at once (not one after another).
+  // loadUserCaps: the distance tool needs the person's own Google Maps key.
+  await Promise.all([loadUserCaps(), loadCategoriesCache(), loadPlacesCache(), loadCitiesCache()]);
 
   initAddActivityToggle(document.getElementById("add-activity-container"), {
     tripId: null,

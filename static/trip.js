@@ -1714,15 +1714,23 @@ async function init() {
     Global.showMessage("No trip specified.", "error");
     return;
   }
+  // Everything the page needs that does not depend on the trip is asked for at the same moment as the trip itself (they used to be one
+  // request after another, so the page waited for the sum of them, not the slowest one). `caches` is awaited further down, where the
+  // category/place/city selects are first built; the empty catch only stops a failure being reported twice before then.
+  const tripRequest = Global.fetchJSON(`${TRIPS_API}/${tripId}`);
+  tripRequest.catch(() => {});
+  const capsLoaded = loadUserCaps();
+  const caches = Promise.all([loadCategoriesCache(), loadPlacesCache(), loadCitiesCache()]);
+  caches.catch(() => {});
   try {
-    currentTrip = await Global.fetchJSON(`${TRIPS_API}/${tripId}`);
+    currentTrip = await tripRequest;
   } catch (err) {
     Global.showMessage(err.message, "error");
     return;
   }
 
   applyTripRole(currentTrip);
-  await loadUserCaps(); // before anything that offers a feature needing someone's own API key
+  await capsLoaded; // before anything that offers a feature needing someone's own API key
   renderTripHeader();
   loadCoverage();
 
@@ -1755,9 +1763,7 @@ async function init() {
   // category <select> or place-link <select> (the add form below, and
   // every activity card/edit-pane) - see activities.js's init for the
   // same reasoning.
-  await loadCategoriesCache();
-  await loadPlacesCache();
-  await loadCitiesCache();
+  await caches; // started at the top of init, in parallel with the trip
 
   initAttachActivityPicker();
   if (isAdmin) initImportPlansForm();

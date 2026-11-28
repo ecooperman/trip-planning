@@ -117,19 +117,8 @@ app.get("/profile.html", response_class=HTMLResponse)(_render("profile.html"))
 app.get("/users.html", response_class=HTMLResponse)(_render("users.html", admin_only=True))
 
 
-@app.middleware("http")
-async def no_cache(request: Request, call_next):
-    """Never let the browser (or iOS's aggressive standalone-PWA cache) serve
-    a stale copy of the app - this is a single-user local tool, not a public
-    site, so there's no real cost to always fetching fresh. Same fix as
-    time-management's app/main.py; `no-cache` on just the static files
-    (an earlier attempt here) wasn't strong enough - a CDN/PWA cache layer
-    isn't obligated to revalidate the way `no-cache` asks, only `no-store`
-    is an unambiguous "never cache this, anywhere" signal.
-    """
-    response = await call_next(request)
-    response.headers["Cache-Control"] = "no-store"
-    return response
+# Cache-Control for every response: no-store, except a versioned script/stylesheet/image (?v=<hash>), kept for a year - see shared_python/pages.py.
+pages.install_cache_headers(app)
 
 
 app.include_router(oidc_login.router)  # /auth/* only when this app does its own sign-in (404 otherwise)
